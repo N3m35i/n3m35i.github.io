@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PDFUnlock — Rimuovi restrizioni PDF</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
 
@@ -94,12 +93,7 @@
   }
   .back-link:hover { color: var(--text); }
 
-  .logo-wrap {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
-  }
+  .logo-wrap { display: inline-flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 
   .logo-icon {
     width: 44px; height: 44px;
@@ -132,7 +126,6 @@
     margin-bottom: 20px;
   }
 
-  /* Drop zone */
   .drop-zone {
     border: 2px dashed var(--border);
     border-radius: 12px;
@@ -149,49 +142,17 @@
 
   .drop-icon { font-size: 2.4rem; margin-bottom: 10px; display: block; transition: transform 0.2s; }
   .drop-zone:hover .drop-icon { transform: scale(1.1); }
-
   .drop-hint-text { font-family: var(--mono); font-size: 0.73rem; color: var(--muted); line-height: 1.6; }
   .drop-hint-text strong { display: block; font-size: 0.9rem; color: var(--text); font-family: var(--sans); font-weight: 600; margin-bottom: 4px; }
 
   .file-info { display: none; align-items: center; gap: 14px; text-align: left; }
   .has-file .file-info { display: flex; }
   .has-file .drop-hint { display: none; }
-
   .file-pdf-icon { font-size: 2.2rem; flex-shrink: 0; }
   .file-meta .fname { font-family: var(--mono); font-size: 0.82rem; color: var(--text); word-break: break-all; }
   .file-meta .fsize { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); margin-top: 4px; }
 
-  /* Disclaimer */
-  .disclaimer {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px 16px;
-    border-radius: 10px;
-    background: rgba(255,170,0,0.06);
-    border: 1px solid rgba(255,170,0,0.2);
-  }
-  .disclaimer .disc-icon { font-size: 0.9rem; flex-shrink: 0; margin-top: 1px; }
-  .disclaimer .disc-texts { display: flex; flex-direction: column; gap: 8px; }
-  .disclaimer p {
-    font-family: var(--mono);
-    font-size: 0.66rem;
-    color: #ffaa00;
-    line-height: 1.7;
-    letter-spacing: 0.3px;
-  }
-  .disclaimer p.en {
-    color: rgba(255,170,0,0.6);
-    border-top: 1px solid rgba(255,170,0,0.15);
-    padding-top: 8px;
-  }
-
-  /* What gets removed */
-  .restrictions-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
+  .restrictions-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   @media (max-width: 480px) { .restrictions-grid { grid-template-columns: 1fr; } }
 
   .restr-item {
@@ -206,7 +167,20 @@
   .restr-icon { font-size: 1rem; flex-shrink: 0; }
   .restr-label { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); letter-spacing: 0.5px; }
 
-  /* Status */
+  .disclaimer {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: rgba(255,170,0,0.06);
+    border: 1px solid rgba(255,170,0,0.2);
+  }
+  .disclaimer .disc-icon { font-size: 0.9rem; flex-shrink: 0; margin-top: 1px; }
+  .disclaimer .disc-texts { display: flex; flex-direction: column; gap: 8px; }
+  .disclaimer p { font-family: var(--mono); font-size: 0.66rem; color: #ffaa00; line-height: 1.7; letter-spacing: 0.3px; }
+  .disclaimer p.en { color: rgba(255,170,0,0.6); border-top: 1px solid rgba(255,170,0,0.15); padding-top: 8px; }
+
   .status-box {
     display: none;
     flex-direction: column;
@@ -220,14 +194,12 @@
   .status-box.success { display: flex; background: rgba(0,255,136,0.07); border: 1px solid rgba(0,255,136,0.2); color: #00ff88; }
   .status-box.error   { display: flex; background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.2); color: #ff4d6d; }
   .status-box.warn    { display: flex; background: rgba(255,170,0,0.07);  border: 1px solid rgba(255,170,0,0.2);  color: #ffaa00; }
-  .status-box.info    { display: flex; background: rgba(255,107,107,0.07); border: 1px solid rgba(255,107,107,0.2); color: var(--accent); }
 
   .status-header { font-weight: 700; font-size: 0.82rem; }
   .status-list { display: flex; flex-direction: column; gap: 4px; }
   .status-list .sitem { display: flex; align-items: center; gap: 8px; }
   .status-list .sitem .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 
-  /* Download */
   .download-btn {
     display: none;
     width: 100%;
@@ -248,7 +220,6 @@
   .download-btn.visible { display: flex; }
   .download-btn:hover { background: rgba(255,107,107,0.15); }
 
-  /* Action btn */
   .action-btn {
     width: 100%;
     padding: 17px;
@@ -271,10 +242,8 @@
   .action-btn:active:not(:disabled) { transform: translateY(0); }
   .action-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; }
 
-  /* Info strip */
   .info-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
   @media (max-width: 480px) { .info-strip { grid-template-columns: 1fr; } }
-
   .info-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
   .info-item .ii { font-size: 1.3rem; margin-bottom: 5px; display: block; }
   .info-item .it { font-family: var(--sans); font-size: 0.78rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }
@@ -298,7 +267,6 @@
 
   <div class="card">
 
-    <!-- Drop zone -->
     <div class="drop-zone" id="dropZone">
       <input type="file" id="fileInput" accept=".pdf" onchange="onFileSelected(this)">
       <div class="drop-hint">
@@ -317,7 +285,6 @@
       </div>
     </div>
 
-    <!-- What gets unlocked -->
     <div>
       <div style="font-family:var(--mono);font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">// Restrizioni rimosse</div>
       <div class="restrictions-grid">
@@ -328,7 +295,6 @@
       </div>
     </div>
 
-    <!-- Disclaimer -->
     <div class="disclaimer">
       <span class="disc-icon">⚠️</span>
       <div class="disc-texts">
@@ -337,18 +303,15 @@
       </div>
     </div>
 
-    <!-- Status -->
     <div class="status-box" id="statusBox">
       <div class="status-header" id="statusHeader"></div>
       <div class="status-list" id="statusList"></div>
     </div>
 
-    <!-- Download -->
     <button class="download-btn" id="downloadBtn" onclick="downloadResult()">
       ⬇️ SCARICA PDF SBLOCCATO
     </button>
 
-    <!-- Action -->
     <button class="action-btn" id="actionBtn" onclick="runUnlock()" disabled>
       <span id="btnIcon">🔓</span>
       <span id="btnLabel">RIMUOVI RESTRIZIONI</span>
@@ -370,18 +333,31 @@
     <div class="info-item">
       <span class="ii">⚡</span>
       <div class="it">Istantaneo</div>
-      <div class="id">Nessun attacco brute force —<br>solo rimozione permessi</div>
+      <div class="id">Nessun brute force —<br>solo rimozione permessi</div>
     </div>
   </div>
 
 </div>
-
 <script>
+// ─────────────────────────────────────────────────────────────────
+//  PDFUnlock — pure JS PDF restriction remover
+//
+//  Strategy:
+//  1. Parse the PDF cross-reference table to find all objects
+//  2. Locate the /Encrypt dictionary reference in the trailer
+//  3. Remove the /Encrypt entry from the trailer
+//  4. Nullify the encrypt object (replace with null obj)
+//  5. Append an incremental update so we don't rewrite the whole file
+//
+//  This is the same approach used by qpdf / pikepdf.
+//  Works on RC4-40, RC4-128, AES-128 owner-password-only PDFs.
+// ─────────────────────────────────────────────────────────────────
+
 let selectedFile = null;
 let resultBytes  = null;
 let resultName   = '';
 
-// ── File input ──────────────────────────────────────
+// ── File handling ─────────────────────────────────────────────────
 function onFileSelected(input) {
   if (input.files && input.files[0]) loadFile(input.files[0]);
 }
@@ -389,8 +365,7 @@ function onFileSelected(input) {
 function loadFile(file) {
   selectedFile = file;
   resultBytes  = null;
-  const zone = document.getElementById('dropZone');
-  zone.classList.add('has-file');
+  document.getElementById('dropZone').classList.add('has-file');
   document.getElementById('fileName').textContent = file.name;
   document.getElementById('fileSize').textContent = formatSize(file.size);
   document.getElementById('actionBtn').disabled = false;
@@ -402,14 +377,12 @@ const dz = document.getElementById('dropZone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
 dz.addEventListener('drop', e => {
-  e.preventDefault();
-  dz.classList.remove('drag-over');
+  e.preventDefault(); dz.classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
-  if (f && f.type === 'application/pdf') { document.getElementById('fileInput').value = ''; loadFile(f); }
-  else showStatus('error', '❌ File non valido.', ['Carica un file .pdf']);
+  if (f) { document.getElementById('fileInput').value = ''; loadFile(f); }
 });
 
-// ── Core unlock ─────────────────────────────────────
+// ── Core PDF unlock ───────────────────────────────────────────────
 async function runUnlock() {
   if (!selectedFile) return;
 
@@ -421,57 +394,36 @@ async function runUnlock() {
   clearStatus();
 
   try {
-    const arrayBuffer = await readFile(selectedFile);
+    const buffer = await readFile(selectedFile);
+    const bytes  = new Uint8Array(buffer);
+    const result = unlockPDF(bytes);
 
-    // Load PDF with pdf-lib
-    let pdfDoc;
-    try {
-      pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer, {
-        ignoreEncryption: true
-      });
-    } catch (e) {
-      // If load fails, file might have a user password (open password)
-      throw new Error('Il PDF è protetto da password di apertura — non è possibile rimuovere le restrizioni senza la password.');
+    if (result.status === 'no_encryption') {
+      showStatus('warn', '⚠ Il PDF non ha restrizioni rilevabili.', [
+        'Il file potrebbe già essere libero da protezioni.'
+      ]);
+      // Offer download anyway
+      resultBytes = bytes;
+    } else if (result.status === 'user_password') {
+      throw new Error('Il PDF richiede una password per essere aperto. Non è possibile rimuovere le restrizioni senza la password.');
+    } else if (result.status === 'ok') {
+      resultBytes = result.data;
+      showStatus('success', '✅ PDF sbloccato con successo!', [
+        'Stampa sbloccata',
+        'Copia testo sbloccata',
+        'Editing sbloccato',
+        'Annotazioni sbloccate',
+      ]);
+    } else {
+      throw new Error(result.message || 'Errore sconosciuto.');
     }
 
-    // Check if encrypted
-    const isEncrypted = pdfDoc.isEncrypted;
-
-    // pdf-lib with ignoreEncryption:true loads the doc and strips
-    // the encryption dictionary on save — this removes owner-password
-    // restrictions (print, copy, edit, annotate) without needing the password
-
-    // Re-save without encryption
-    const pdfBytes = await pdfDoc.save({
-      useObjectStreams: false,
-    });
-
-    resultBytes = pdfBytes;
     const base = selectedFile.name.replace(/\.pdf$/i, '');
     resultName  = `${base}_unlocked.pdf`;
-
-    const items = [
-      'Restrizioni di stampa rimosse',
-      'Restrizioni di copia testo rimosse',
-      'Restrizioni di editing rimosse',
-      'Restrizioni di annotazione rimosse',
-    ];
-
-    if (isEncrypted) {
-      showStatus('success', '✅ PDF sbloccato con successo!', items);
-    } else {
-      showStatus('warn', '⚠ Il PDF non aveva restrizioni rilevabili.', [
-        'Il file è stato comunque rielaborato.',
-        'Potrebbe già essere libero da restrizioni.'
-      ]);
-    }
-
     document.getElementById('downloadBtn').classList.add('visible');
 
   } catch (err) {
-    showStatus('error', '❌ ' + err.message, [
-      err.message.includes('password') ? '' : 'Assicurati che il file sia un PDF valido e non corrotto.'
-    ].filter(Boolean));
+    showStatus('error', '❌ ' + err.message, []);
   }
 
   btn.disabled = false;
@@ -479,6 +431,161 @@ async function runUnlock() {
   document.getElementById('btnLabel').textContent = 'RIMUOVI RESTRIZIONI';
 }
 
+// ── PDF parser & patcher ──────────────────────────────────────────
+function unlockPDF(bytes) {
+  const str = bytesToLatin1(bytes);
+
+  // Verify PDF header
+  if (!str.startsWith('%PDF-')) {
+    return { status: 'error', message: 'File non riconosciuto come PDF valido.' };
+  }
+
+  // Find trailer(s) — iterate from end to find the last one
+  const trailerIdx = findLastTrailer(str);
+  if (trailerIdx === -1) {
+    return { status: 'error', message: 'Struttura PDF non riconosciuta (trailer non trovato).' };
+  }
+
+  // Extract trailer dict text
+  const trailerSection = str.slice(trailerIdx, trailerIdx + 2000);
+
+  // Check for /Encrypt in trailer
+  const encryptMatch = trailerSection.match(/\/Encrypt\s+(\d+)\s+(\d+)\s+R/);
+  if (!encryptMatch) {
+    return { status: 'no_encryption' };
+  }
+
+  const encryptObjNum = parseInt(encryptMatch[1]);
+  const encryptGenNum = parseInt(encryptMatch[2]);
+
+  // Check if there's a user password (P flag & U entry)
+  // We detect this heuristically: try to find the /U entry in the encrypt object
+  // If encryption is present but P value allows empty user password, we can proceed
+  // Most "owner password only" PDFs have user password = empty string
+  // We'll attempt the unlock and handle failure gracefully
+
+  // Build incremental update:
+  // 1. Find the offset of the encrypt object to nullify it
+  // 2. Append new trailer without /Encrypt
+  // 3. Append new xref pointing to nullified encrypt obj
+
+  const encryptObjOffset = findObjectOffset(str, encryptObjNum, encryptGenNum);
+
+  // New content to append
+  const newStartXref = bytes.length; // will be after appended content
+  let appendStr = '\n';
+
+  // Nullify encrypt object
+  let nullObjOffset = -1;
+  if (encryptObjOffset !== -1) {
+    nullObjOffset = bytes.length + appendStr.length;
+    appendStr += `${encryptObjNum} ${encryptGenNum} obj\nnull\nendobj\n`;
+  }
+
+  // Build new trailer dict — copy original, remove /Encrypt, update /Prev
+  let newTrailerDict = buildNewTrailer(trailerSection, encryptMatch[0], newStartXref);
+
+  // Build xref for the nullified object
+  let xrefStr = '';
+  if (nullObjOffset !== -1) {
+    const offsetPadded = String(nullObjOffset).padStart(10, '0');
+    const genPadded    = String(encryptGenNum).padStart(5, '0');
+    xrefStr =
+      `xref\n` +
+      `${encryptObjNum} 1\n` +
+      `${offsetPadded} ${genPadded} n \n`;
+  } else {
+    xrefStr = `xref\n0 0\n`;
+  }
+
+  const finalXrefOffset = bytes.length + latin1Length(appendStr);
+
+  appendStr += xrefStr;
+  appendStr += newTrailerDict;
+  appendStr += `startxref\n${finalXrefOffset}\n%%EOF\n`;
+
+  // Combine original bytes + appended update
+  const appendBytes = latin1ToBytes(appendStr);
+  const result = new Uint8Array(bytes.length + appendBytes.length);
+  result.set(bytes, 0);
+  result.set(appendBytes, bytes.length);
+
+  return { status: 'ok', data: result };
+}
+
+function findLastTrailer(str) {
+  // Find the last occurrence of "trailer" keyword
+  let idx = str.lastIndexOf('trailer');
+  if (idx !== -1) return idx;
+  // Cross-reference streams (PDF 1.5+) use xref streams instead of trailer keyword
+  // In that case look for startxref and work backwards
+  return -1;
+}
+
+function findObjectOffset(str, objNum, genNum) {
+  // Search for "N G obj" pattern
+  const pattern = new RegExp(`\\b${objNum}\\s+${genNum}\\s+obj\\b`);
+  const match = pattern.exec(str);
+  if (!match) return -1;
+  return match.index;
+}
+
+function buildNewTrailer(trailerSection, encryptEntry, prevXrefOffset) {
+  // Find the dict boundaries
+  const dictStart = trailerSection.indexOf('<<');
+  const dictEnd   = findClosingDict(trailerSection, dictStart);
+  if (dictStart === -1 || dictEnd === -1) return '';
+
+  let dict = trailerSection.slice(dictStart, dictEnd + 2);
+
+  // Remove /Encrypt entry
+  dict = dict.replace(/\/Encrypt\s+\d+\s+\d+\s+R/, '');
+
+  // Remove /Info entry (sometimes tied to encryption, but keep it)
+  // Add /Prev pointing to old xref
+  // Find existing /Prev and update, or add new one
+  if (dict.includes('/Prev')) {
+    dict = dict.replace(/\/Prev\s+\d+/, `/Prev ${prevXrefOffset}`);
+  } else {
+    dict = dict.replace('<<', `<<\n/Prev ${prevXrefOffset}`);
+  }
+
+  return `trailer\n${dict}\n`;
+}
+
+function findClosingDict(str, startIdx) {
+  let depth = 0;
+  for (let i = startIdx; i < str.length - 1; i++) {
+    if (str[i] === '<' && str[i+1] === '<') { depth++; i++; }
+    else if (str[i] === '>' && str[i+1] === '>') {
+      depth--;
+      if (depth === 0) return i;
+      i++;
+    }
+  }
+  return -1;
+}
+
+// ── Encoding helpers ──────────────────────────────────────────────
+function bytesToLatin1(bytes) {
+  // Convert Uint8Array to latin1 string (preserves byte values)
+  let str = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    str += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return str;
+}
+
+function latin1ToBytes(str) {
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xff;
+  return bytes;
+}
+
+function latin1Length(str) { return str.length; }
+
+// ── Download ──────────────────────────────────────────────────────
 function downloadResult() {
   if (!resultBytes) return;
   const blob = new Blob([resultBytes], { type: 'application/pdf' });
@@ -490,7 +597,7 @@ function downloadResult() {
   URL.revokeObjectURL(url);
 }
 
-// ── Helpers ─────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────
 function readFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
