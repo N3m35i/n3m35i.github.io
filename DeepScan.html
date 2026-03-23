@@ -369,19 +369,55 @@ function buildBaseSection(file, bytes, ext, mime) {
   // Magic bytes detection
   const magic = detectMagic(bytes);
   const magicMatch = magic.ext && magic.ext.includes(ext);
+  // For superformats, magic bytes match is expected to differ — don't warn
+  const superformatsCheck = { ai:'pdf', eps:'pdf', docx:'zip', xlsx:'zip', pptx:'zip', odt:'zip', ods:'zip', odp:'zip', jar:'zip', apk:'zip', ipa:'zip', epub:'zip', avi:'riff', wav:'riff', webp:'riff' };
+  const isSuperformat = ext && superformatsCheck[ext.toLowerCase()] &&
+    magic.ext && magic.ext.some(e => e === superformatsCheck[ext.toLowerCase()] ||
+      magic.desc.toLowerCase().includes(superformatsCheck[ext.toLowerCase()]));
+  const magicCls = !magic.ext ? '' : (magicMatch || isSuperformat) ? 'good' : 'warn';
+
   rows.push({
-    k: 'Magic bytes',
-    v: magic.desc + (magic.ext ? ` [${magic.ext}]` : ''),
-    cls: magic.ext ? (magicMatch ? 'good' : 'warn') : ''
+    k: 'Firma binaria (magic)',
+    v: magic.desc + (magic.ext ? ` [.${magic.ext.join(', .')}]` : ''),
+    cls: magicCls
   });
 
+  // Known superformats: extensions that are legitimately based on another format
+  const superformats = {
+    // PDF-based formats
+    ai:   'pdf',   // Adobe Illustrator uses PDF as wrapper
+    eps:  'pdf',   // Encapsulated PostScript (newer versions)
+    // ZIP-based formats (Office Open XML, etc.)
+    docx: 'zip', xlsx: 'zip', pptx: 'zip',
+    odt:  'zip', ods: 'zip', odp: 'zip',
+    jar:  'zip', apk: 'zip', ipa: 'zip', epub: 'zip',
+    xpi:  'zip', war: 'zip', ear: 'zip',
+    // RIFF-based formats
+    avi:  'riff', wav: 'riff', webp: 'riff',
+  };
+
   if (magic.ext && !magicMatch && ext) {
-    const correct = magic.ext[0];
-    rows.push({
-      k: '⚠ Estensione fasulla',
-      v: `Il file ha estensione .${ext} ma il contenuto reale è ${magic.desc} → l'estensione corretta dovrebbe essere .${correct}`,
-      cls: 'danger'
-    });
+    const knownBase = superformats[ext.toLowerCase()];
+    const isKnownSuperformat = knownBase && magic.ext.some(e =>
+      e === knownBase || knownBase.includes(e) || magic.desc.toLowerCase().includes(knownBase)
+    );
+
+    if (isKnownSuperformat) {
+      // Legitimate superformat — just inform, no alarm
+      rows.push({
+        k: 'Formato base',
+        v: `${magic.desc} (normale: .${ext} è un formato basato su ${magic.desc.split(' ')[0]})`,
+        cls: ''
+      });
+    } else {
+      // Genuine mismatch — real anomaly
+      const correct = magic.ext[0];
+      rows.push({
+        k: '⚠ Formato non corrispondente',
+        v: `L'estensione dichiarata è .${ext}, ma la firma binaria del file indica ${magic.desc}. L'estensione corretta sarebbe .${correct}`,
+        cls: 'danger'
+      });
+    }
   }
 
   // Entropy (randomness — high entropy = compressed/encrypted)
