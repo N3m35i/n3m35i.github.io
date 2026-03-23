@@ -79,6 +79,20 @@
     margin-bottom: 48px;
   }
 
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-decoration: none;
+    margin-bottom: 24px;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--text); }
+
   .logo-wrap {
     display: inline-flex;
     align-items: center;
@@ -483,6 +497,7 @@
 <div class="container">
 
   <header>
+    <a href="index.html" class="back-link">← N3m35i's Tools</a>
     <div class="logo-wrap">
       <div class="logo-icon">🔒</div>
       <h1>File<span>Lock</span></h1>
