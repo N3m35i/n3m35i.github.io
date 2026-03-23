@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>N3m35i's Tools</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a26;
+    --border: #2a2a40;
+    --accent: #c8ff00;
+    --accent2: #ff4d6d;
+    --text: #e8e8f0;
+    --muted: #6666a0;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.25;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow orbs */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+    filter: blur(80px);
+  }
+  .orb-1 {
+    width: 500px; height: 500px;
+    top: -150px; left: -150px;
+    background: radial-gradient(circle, rgba(200,255,0,0.06), transparent 70%);
+    animation: orbFloat 10s ease-in-out infinite alternate;
+  }
+  .orb-2 {
+    width: 400px; height: 400px;
+    bottom: -100px; right: -100px;
+    background: radial-gradient(circle, rgba(255,77,109,0.05), transparent 70%);
+    animation: orbFloat 13s ease-in-out infinite alternate-reverse;
+  }
+
+  @keyframes orbFloat {
+    from { transform: translate(0, 0); }
+    to   { transform: translate(40px, 30px); }
+  }
+
+  /* Layout */
+  .page {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+
+  /* Header */
+  header {
+    margin-bottom: 72px;
+    animation: fadeUp 0.6s ease both;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .handle {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .handle::before {
+    content: '';
+    display: inline-block;
+    width: 20px; height: 1px;
+    background: var(--muted);
+  }
+
+  h1 {
+    font-family: var(--sans);
+    font-size: clamp(2.8rem, 6vw, 4.2rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -2px;
+    color: var(--text);
+  }
+
+  h1 .accent { color: var(--accent); }
+
+  .tagline {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-top: 16px;
+    line-height: 1.7;
+    max-width: 420px;
+  }
+
+  .header-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .badge.live {
+    border-color: rgba(200,255,0,0.3);
+    color: var(--accent);
+    background: rgba(200,255,0,0.06);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .badge.live::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Divider */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 40px;
+    animation: fadeUp 0.6s 0.1s ease both;
+  }
+
+  .divider-label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .divider-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, var(--border), transparent);
+  }
+
+  .divider-count {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* Tools grid */
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+    margin-bottom: 60px;
+  }
+
+  /* Tool card */
+  .tool-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+    animation: fadeUp 0.6s ease both;
+  }
+
+  .tool-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(200,255,0,0.03) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+
+  .tool-card:hover {
+    border-color: rgba(200,255,0,0.4);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(200,255,0,0.1);
+  }
+
+  .tool-card:hover::before { opacity: 1; }
+
+  /* Corner accent */
+  .tool-card::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 60px; height: 60px;
+    background: conic-gradient(from 180deg at 100% 0%, rgba(200,255,0,0.15), transparent 40%);
+    border-radius: 0 16px 0 0;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+
+  .tool-card:hover::after { opacity: 1; }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tool-icon-wrap {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    transition: all 0.25s;
+  }
+
+  .tool-card:hover .tool-icon-wrap {
+    background: rgba(200,255,0,0.08);
+    border-color: rgba(200,255,0,0.3);
+  }
+
+  .tool-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .tag.accent-tag {
+    border-color: rgba(200,255,0,0.25);
+    color: var(--accent);
+    background: rgba(200,255,0,0.05);
+  }
+
+  .tool-name {
+    font-family: var(--sans);
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    transition: color 0.2s;
+  }
+
+  .tool-card:hover .tool-name { color: var(--accent); }
+
+  .tool-desc {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    line-height: 1.7;
+    letter-spacing: 0.3px;
+  }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .card-specs {
+    display: flex;
+    gap: 12px;
+  }
+
+  .spec {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .open-arrow {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tool-card:hover .open-arrow {
+    color: var(--accent);
+    transform: translateX(4px);
+  }
+
+  /* Coming soon card */
+  .tool-card.coming-soon {
+    opacity: 0.45;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .tool-card.coming-soon:hover { transform: none; }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: gap;
+    gap: 16px;
+    animation: fadeUp 0.6s 0.3s ease both;
+  }
+
+  .footer-left {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    line-height: 1.8;
+  }
+
+  .footer-left a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .footer-left a:hover { text-decoration: underline; }
+
+  .footer-right {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--border);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Stagger cards */
+  .tool-card:nth-child(1) { animation-delay: 0.15s; }
+  .tool-card:nth-child(2) { animation-delay: 0.25s; }
+  .tool-card:nth-child(3) { animation-delay: 0.35s; }
+
+  @media (max-width: 500px) {
+    h1 { font-size: 2.4rem; }
+    .header-badge { display: none; }
+    .tools-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="page">
+
+  <header>
+    <div class="header-top">
+      <div>
+        <div class="handle">github.com/N3m35i</div>
+        <h1>N3m35i's<br><span class="accent">Tools</span></h1>
+        <p class="tagline">// portable, zero-dependency utilities<br>// open in any browser. no install required.</p>
+      </div>
+      <div class="header-badge">
+        <div class="badge live">online</div>
+        <div class="badge">free to use</div>
+        <div class="badge">open source</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="divider">
+    <span class="divider-label">Tools</span>
+    <div class="divider-line"></div>
+    <span class="divider-count">01 available</span>
+  </div>
+
+  <div class="tools-grid">
+
+    <!-- FileLock -->
+    <a href="FileLock.html" class="tool-card">
+      <div class="card-header">
+        <div class="tool-icon-wrap">🔒</div>
+        <div class="tool-tags">
+          <span class="tag accent-tag">AES-256</span>
+          <span class="tag">portable</span>
+          <span class="tag">offline</span>
+        </div>
+      </div>
+      <div>
+        <div class="tool-name">FileLock</div>
+        <div class="tool-desc">
+          Encrypt and decrypt any file with a text key.<br>
+          AES-256-GCM · runs entirely in your browser · no data leaves your device.
+        </div>
+      </div>
+      <div class="card-footer">
+        <div class="card-specs">
+          <span class="spec">🛡️ military-grade</span>
+          <span class="spec">📦 single file</span>
+        </div>
+        <span class="open-arrow">open →</span>
+      </div>
+    </a>
+
+    <!-- Placeholder / coming soon -->
+    <!--
+    <a href="#" class="tool-card coming-soon">
+      <div class="card-header">
+        <div class="tool-icon-wrap">🔧</div>
+        <div class="tool-tags">
+          <span class="tag">coming soon</span>
+        </div>
+      </div>
+      <div>
+        <div class="tool-name">Next Tool</div>
+        <div class="tool-desc">Coming soon.</div>
+      </div>
+      <div class="card-footer">
+        <div class="card-specs"></div>
+        <span class="open-arrow">soon</span>
+      </div>
+    </a>
+    -->
+
+  </div>
+
+  <footer>
+    <div class="footer-left">
+      built by <a href="https://github.com/N3m35i" target="_blank">N3m35i</a><br>
+      all tools run client-side · zero tracking · zero servers
+    </div>
+    <div class="footer-right">v1.0 · 2026</div>
+  </footer>
+
+</div>
+
+</body>
+</html>
