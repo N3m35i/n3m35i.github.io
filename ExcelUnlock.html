@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ExcelUnlock — Rimuovi protezioni Excel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a26;
+    --border: #2a2a40;
+    --accent: #00ff88;
+    --accent-dim: rgba(0,255,136,0.07);
+    --accent-border: rgba(0,255,136,0.25);
+    --text: #e8e8f0;
+    --muted: #6666a0;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 80px;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.22;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -150px; right: -150px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(0,255,136,0.05) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 11s ease-in-out infinite alternate;
+  }
+
+  @keyframes drift {
+    from { transform: translate(0,0); }
+    to   { transform: translate(-50px, 60px); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 620px;
+    animation: fadeUp 0.5s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(20px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  /* Header */
+  header { text-align: center; margin-bottom: 44px; }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-decoration: none;
+    margin-bottom: 24px;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--text); }
+
+  .logo-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+
+  h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -1px; }
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 20px;
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .drop-zone.has-file {
+    border-style: solid;
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    padding: 22px 24px;
+  }
+
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%; height: 100%;
+  }
+
+  .drop-icon { font-size: 2.4rem; margin-bottom: 10px; display: block; transition: transform 0.2s; }
+  .drop-zone:hover .drop-icon { transform: scale(1.1); }
+
+  .drop-hint-text {
+    font-family: var(--mono);
+    font-size: 0.73rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .drop-hint-text strong {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .file-info { display: none; align-items: center; gap: 14px; text-align: left; }
+  .has-file .file-info { display: flex; }
+  .has-file .drop-hint { display: none; }
+
+  .file-excel-icon { font-size: 2.2rem; flex-shrink: 0; }
+
+  .file-meta .fname {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text);
+    word-break: break-all;
+  }
+  .file-meta .fsize {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* Options */
+  .options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .opt-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    user-select: none;
+  }
+
+  .opt-card:hover { border-color: var(--accent-border); }
+  .opt-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+
+  .opt-check {
+    width: 18px; height: 18px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem;
+    transition: all 0.15s;
+    color: transparent;
+  }
+  .opt-card.selected .opt-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+  }
+
+  .opt-text .opt-name {
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+  .opt-text .opt-desc {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* Action btn */
+  .action-btn {
+    width: 100%;
+    padding: 17px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #000;
+    font-family: var(--sans);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .action-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(0,255,136,0.25);
+  }
+  .action-btn:active:not(:disabled) { transform: translateY(0); }
+  .action-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; }
+
+  /* Status */
+  .status-box {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    line-height: 1.6;
+  }
+  .status-box.success { display: flex; background: rgba(0,255,136,0.07); border: 1px solid rgba(0,255,136,0.2); color: var(--accent); }
+  .status-box.error   { display: flex; background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.2); color: #ff4d6d; }
+  .status-box.warn    { display: flex; background: rgba(255,170,0,0.07);  border: 1px solid rgba(255,170,0,0.2);  color: #ffaa00; }
+
+  .status-header { font-weight: 700; font-size: 0.82rem; }
+
+  .status-list { display: flex; flex-direction: column; gap: 4px; }
+  .status-list .sitem { display: flex; align-items: center; gap: 8px; }
+  .status-list .sitem .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+  /* Download btn */
+  .download-btn {
+    display: none;
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--accent-border);
+    border-radius: 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .download-btn.visible { display: flex; }
+  .download-btn:hover { background: rgba(0,255,136,0.15); }
+
+  /* Info strip */
+  .info-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+  @media (max-width: 480px) { .info-strip { grid-template-columns: 1fr; } }
+
+  .info-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+  .info-item .ii { font-size: 1.3rem; margin-bottom: 5px; display: block; }
+  .info-item .it { font-family: var(--sans); font-size: 0.78rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .info-item .id { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); line-height: 1.5; }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinning { display: inline-block; animation: spin 0.7s linear infinite; }
+
+  @media (max-width: 480px) {
+    .options-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <a href="index.html" class="back-link">← N3m35i's Tools</a>
+    <div class="logo-wrap">
+      <div class="logo-icon">🔓</div>
+      <h1>Excel<span>Unlock</span></h1>
+    </div>
+    <p class="subtitle">Rimuovi protezioni · .xlsx · Zero upload</p>
+  </header>
+
+  <div class="card">
+
+    <!-- Drop zone -->
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".xlsx,.xlsm,.xltx,.xltm" onchange="onFileSelected(this)">
+      <div class="drop-hint">
+        <span class="drop-icon">📊</span>
+        <div class="drop-hint-text">
+          <strong>Trascina il file Excel qui</strong>
+          .xlsx · .xlsm · .xltx · .xltm
+        </div>
+      </div>
+      <div class="file-info">
+        <span class="file-excel-icon">📊</span>
+        <div class="file-meta">
+          <div class="fname" id="fileName">—</div>
+          <div class="fsize" id="fileSize">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-radius:10px;background:rgba(255,170,0,0.06);border:1px solid rgba(255,170,0,0.2);">
+      <span style="font-size:0.9rem;flex-shrink:0;margin-top:1px;">⚠️</span>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <p style="font-family:var(--mono);font-size:0.66rem;color:#ffaa00;line-height:1.7;letter-spacing:0.3px;">
+          Questo tool è destinato esclusivamente a file di cui sei proprietario o per cui hai autorizzazione esplicita alla modifica. L'utilizzo su file altrui senza consenso è responsabilità dell'utente.
+        </p>
+        <p style="font-family:var(--mono);font-size:0.66rem;color:rgba(255,170,0,0.6);line-height:1.7;letter-spacing:0.3px;border-top:1px solid rgba(255,170,0,0.15);padding-top:8px;">
+          This tool is intended solely for files you own or have explicit authorisation to modify. Any use on third-party files without consent is the sole responsibility of the user.
+        </p>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div>
+      <div style="font-family:var(--mono);font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">// Protezioni da rimuovere</div>
+      <div class="options-grid">
+        <div class="opt-card selected" id="opt-sheet" onclick="toggleOpt('sheet')">
+          <div class="opt-check" id="chk-sheet">✓</div>
+          <div class="opt-text">
+            <div class="opt-name">Sheet protection</div>
+            <div class="opt-desc">Sblocca i fogli protetti — puoi modificare le celle</div>
+          </div>
+        </div>
+        <div class="opt-card selected" id="opt-workbook" onclick="toggleOpt('workbook')">
+          <div class="opt-check" id="chk-workbook">✓</div>
+          <div class="opt-text">
+            <div class="opt-name">Workbook protection</div>
+            <div class="opt-desc">Sblocca la struttura — puoi aggiungere/spostare fogli</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="status-box" id="statusBox">
+      <div class="status-header" id="statusHeader"></div>
+      <div class="status-list" id="statusList"></div>
+    </div>
+
+    <!-- Download -->
+    <button class="download-btn" id="downloadBtn" onclick="downloadResult()">
+      ⬇️ SCARICA FILE SBLOCCATO
+    </button>
+
+    <!-- Action -->
+    <button class="action-btn" id="actionBtn" onclick="runUnlock()" disabled>
+      <span id="btnIcon">🔓</span>
+      <span id="btnLabel">SBLOCCA FILE</span>
+    </button>
+
+  </div>
+
+  <div class="info-strip">
+    <div class="info-item">
+      <span class="ii">📦</span>
+      <div class="it">ZIP interno</div>
+      <div class="id">.xlsx è uno zip —<br>modifichiamo l'XML</div>
+    </div>
+    <div class="info-item">
+      <span class="ii">🌐</span>
+      <div class="it">100% Locale</div>
+      <div class="id">Nessun server.<br>Gira nel browser.</div>
+    </div>
+    <div class="info-item">
+      <span class="ii">⚡</span>
+      <div class="it">Istantaneo</div>
+      <div class="id">Nessuna password<br>da indovinare</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let selectedFile = null;
+let resultBlob   = null;
+let resultName   = '';
+let opts = { sheet: true, workbook: true };
+
+// ── File input ──────────────────────────────────────
+function onFileSelected(input) {
+  if (input.files && input.files[0]) loadFile(input.files[0]);
+}
+
+function loadFile(file) {
+  selectedFile = file;
+  resultBlob = null;
+
+  const zone = document.getElementById('dropZone');
+  zone.classList.add('has-file');
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = formatSize(file.size);
+  document.getElementById('actionBtn').disabled = false;
+  document.getElementById('downloadBtn').classList.remove('visible');
+  clearStatus();
+}
+
+// Drag & drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) { document.getElementById('fileInput').value = ''; loadFile(f); }
+});
+
+// ── Options ─────────────────────────────────────────
+function toggleOpt(key) {
+  opts[key] = !opts[key];
+  document.getElementById('opt-' + key).classList.toggle('selected', opts[key]);
+  document.getElementById('chk-' + key).textContent = opts[key] ? '✓' : '';
+}
+
+// ── Core unlock logic ───────────────────────────────
+async function runUnlock() {
+  if (!selectedFile) return;
+  if (!opts.sheet && !opts.workbook) {
+    showStatus('warn', 'Seleziona almeno una protezione da rimuovere.', []);
+    return;
+  }
+
+  // UI: loading state
+  const btn = document.getElementById('actionBtn');
+  btn.disabled = true;
+  document.getElementById('btnIcon').innerHTML = '<span class="spinning">⏳</span>';
+  document.getElementById('btnLabel').textContent = 'Elaborazione…';
+  document.getElementById('downloadBtn').classList.remove('visible');
+  clearStatus();
+
+  try {
+    const arrayBuffer = await readFile(selectedFile);
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    const report = [];   // what we found and removed
+    let modified = false;
+
+    // ── 1. Sheet protection ──────────────────────────
+    if (opts.sheet) {
+      const sheetFiles = Object.keys(zip.files).filter(
+        name => name.match(/^xl\/worksheets\/sheet\d*\.xml$/i)
+      );
+
+      for (const sheetPath of sheetFiles) {
+        let xml = await zip.files[sheetPath].async('string');
+        const before = xml;
+
+        // Remove <sheetProtection ... /> tag (self-closing or with content)
+        xml = xml.replace(/<sheetProtection[^>]*\/>/gi, '');
+        xml = xml.replace(/<sheetProtection[^>]*>[\s\S]*?<\/sheetProtection>/gi, '');
+
+        if (xml !== before) {
+          zip.file(sheetPath, xml);
+          const sheetName = sheetPath.split('/').pop().replace('.xml','');
+          report.push({ type: 'sheet', label: `Protezione rimossa: ${sheetName}` });
+          modified = true;
+        }
+      }
+
+      if (!report.some(r => r.type === 'sheet')) {
+        report.push({ type: 'info', label: 'Nessuna sheet protection trovata' });
+      }
+    }
+
+    // ── 2. Workbook protection ────────────────────────
+    if (opts.workbook) {
+      const wbPaths = Object.keys(zip.files).filter(
+        name => name.match(/^xl\/workbook\.xml$/i)
+      );
+
+      for (const wbPath of wbPaths) {
+        let xml = await zip.files[wbPath].async('string');
+        const before = xml;
+
+        xml = xml.replace(/<workbookProtection[^>]*\/>/gi, '');
+        xml = xml.replace(/<workbookProtection[^>]*>[\s\S]*?<\/workbookProtection>/gi, '');
+
+        if (xml !== before) {
+          zip.file(wbPath, xml);
+          report.push({ type: 'workbook', label: 'Workbook protection rimossa' });
+          modified = true;
+        }
+      }
+
+      if (!report.some(r => r.type === 'workbook')) {
+        report.push({ type: 'info', label: 'Nessuna workbook protection trovata' });
+      }
+    }
+
+    // ── Generate output ───────────────────────────────
+    const outBuffer = await zip.generateAsync({
+      type: 'arraybuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+
+    resultBlob = new Blob([outBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    const ext  = selectedFile.name.split('.').pop();
+    const base = selectedFile.name.slice(0, -(ext.length + 1));
+    resultName = `${base}_unlocked.${ext}`;
+
+    // ── Show result ───────────────────────────────────
+    if (modified) {
+      showStatus('success',
+        '✅ File sbloccato con successo!',
+        report.filter(r => r.type !== 'info').map(r => r.label)
+      );
+      document.getElementById('downloadBtn').classList.add('visible');
+    } else {
+      showStatus('warn',
+        '⚠ Nessuna protezione trovata nel file.',
+        report.map(r => r.label)
+      );
+      // Still allow download of the repackaged file
+      document.getElementById('downloadBtn').classList.add('visible');
+    }
+
+  } catch (err) {
+    showStatus('error', '❌ Errore: ' + err.message, [
+      'Assicurati che il file sia un .xlsx valido e non corrotto.'
+    ]);
+  }
+
+  // Reset btn
+  btn.disabled = false;
+  document.getElementById('btnIcon').textContent = '🔓';
+  document.getElementById('btnLabel').textContent = 'SBLOCCA FILE';
+}
+
+function downloadResult() {
+  if (!resultBlob) return;
+  const url = URL.createObjectURL(resultBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = resultName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Helpers ─────────────────────────────────────────
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('Errore lettura file.'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+function showStatus(type, header, items) {
+  const box  = document.getElementById('statusBox');
+  box.className = 'status-box ' + type;
+  document.getElementById('statusHeader').textContent = header;
+  const list = document.getElementById('statusList');
+  list.innerHTML = items.map(i =>
+    `<div class="sitem"><span class="sdot"></span><span>${i}</span></div>`
+  ).join('');
+}
+
+function clearStatus() {
+  document.getElementById('statusBox').className = 'status-box';
+  document.getElementById('statusHeader').textContent = '';
+  document.getElementById('statusList').innerHTML = '';
+}
+</script>
+</body>
+</html>
