@@ -514,12 +514,27 @@ function unlockPDF(bytes) {
 }
 
 function findLastTrailer(str) {
-  // Find the last occurrence of "trailer" keyword
+  // 1. Prova il metodo classico (PDF < 1.5)
   let idx = str.lastIndexOf('trailer');
   if (idx !== -1) return idx;
-  // Cross-reference streams (PDF 1.5+) use xref streams instead of trailer keyword
-  // In that case look for startxref and work backwards
+
+  // 2. Metodo per PDF moderni (XRef Streams)
+  // Cerchiamo l'ultimo dizionario che contiene la chiave /Encrypt
+  let lastEncrypt = str.lastIndexOf('/Encrypt');
+  if (lastEncrypt !== -1) {
+    // Risaliamo all'inizio del dizionario '<<' che lo contiene
+    let dictStart = str.lastIndexOf('<<', lastEncrypt);
+    if (dictStart !== -1) return dictStart;
+  }
+
+  // 3. Ultima spiaggia: cerca lo startxref e prova a leggere l'oggetto precedente
+  let startXrefIdx = str.lastIndexOf('startxref');
+  if (startXrefIdx !== -1) {
+    return startXrefIdx; 
+  }
+
   return -1;
+}
 }
 
 function findObjectOffset(str, objNum, genNum) {
