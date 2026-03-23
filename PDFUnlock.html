@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDFUnlock — Rimuovi restrizioni PDF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a26;
+    --border: #2a2a40;
+    --accent: #ff6b6b;
+    --accent-dim: rgba(255,107,107,0.07);
+    --accent-border: rgba(255,107,107,0.25);
+    --text: #e8e8f0;
+    --muted: #6666a0;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 80px;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.22;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -150px; left: -150px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(255,107,107,0.05) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 11s ease-in-out infinite alternate;
+  }
+
+  @keyframes drift {
+    from { transform: translate(0,0); }
+    to   { transform: translate(60px, 50px); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 620px;
+    animation: fadeUp 0.5s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(20px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  header { text-align: center; margin-bottom: 44px; }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-decoration: none;
+    margin-bottom: 24px;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--text); }
+
+  .logo-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+
+  h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -1px; }
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 20px;
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+  .drop-zone.has-file { border-style: solid; border-color: var(--accent); background: var(--accent-dim); padding: 22px 24px; }
+  .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+  .drop-icon { font-size: 2.4rem; margin-bottom: 10px; display: block; transition: transform 0.2s; }
+  .drop-zone:hover .drop-icon { transform: scale(1.1); }
+
+  .drop-hint-text { font-family: var(--mono); font-size: 0.73rem; color: var(--muted); line-height: 1.6; }
+  .drop-hint-text strong { display: block; font-size: 0.9rem; color: var(--text); font-family: var(--sans); font-weight: 600; margin-bottom: 4px; }
+
+  .file-info { display: none; align-items: center; gap: 14px; text-align: left; }
+  .has-file .file-info { display: flex; }
+  .has-file .drop-hint { display: none; }
+
+  .file-pdf-icon { font-size: 2.2rem; flex-shrink: 0; }
+  .file-meta .fname { font-family: var(--mono); font-size: 0.82rem; color: var(--text); word-break: break-all; }
+  .file-meta .fsize { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); margin-top: 4px; }
+
+  /* Disclaimer */
+  .disclaimer {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: rgba(255,170,0,0.06);
+    border: 1px solid rgba(255,170,0,0.2);
+  }
+  .disclaimer .disc-icon { font-size: 0.9rem; flex-shrink: 0; margin-top: 1px; }
+  .disclaimer .disc-texts { display: flex; flex-direction: column; gap: 8px; }
+  .disclaimer p {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    color: #ffaa00;
+    line-height: 1.7;
+    letter-spacing: 0.3px;
+  }
+  .disclaimer p.en {
+    color: rgba(255,170,0,0.6);
+    border-top: 1px solid rgba(255,170,0,0.15);
+    padding-top: 8px;
+  }
+
+  /* What gets removed */
+  .restrictions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  @media (max-width: 480px) { .restrictions-grid { grid-template-columns: 1fr; } }
+
+  .restr-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .restr-icon { font-size: 1rem; flex-shrink: 0; }
+  .restr-label { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); letter-spacing: 0.5px; }
+
+  /* Status */
+  .status-box {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    line-height: 1.6;
+  }
+  .status-box.success { display: flex; background: rgba(0,255,136,0.07); border: 1px solid rgba(0,255,136,0.2); color: #00ff88; }
+  .status-box.error   { display: flex; background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.2); color: #ff4d6d; }
+  .status-box.warn    { display: flex; background: rgba(255,170,0,0.07);  border: 1px solid rgba(255,170,0,0.2);  color: #ffaa00; }
+  .status-box.info    { display: flex; background: rgba(255,107,107,0.07); border: 1px solid rgba(255,107,107,0.2); color: var(--accent); }
+
+  .status-header { font-weight: 700; font-size: 0.82rem; }
+  .status-list { display: flex; flex-direction: column; gap: 4px; }
+  .status-list .sitem { display: flex; align-items: center; gap: 8px; }
+  .status-list .sitem .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+  /* Download */
+  .download-btn {
+    display: none;
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--accent-border);
+    border-radius: 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .download-btn.visible { display: flex; }
+  .download-btn:hover { background: rgba(255,107,107,0.15); }
+
+  /* Action btn */
+  .action-btn {
+    width: 100%;
+    padding: 17px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .action-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,107,107,0.3); }
+  .action-btn:active:not(:disabled) { transform: translateY(0); }
+  .action-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; }
+
+  /* Info strip */
+  .info-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+  @media (max-width: 480px) { .info-strip { grid-template-columns: 1fr; } }
+
+  .info-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+  .info-item .ii { font-size: 1.3rem; margin-bottom: 5px; display: block; }
+  .info-item .it { font-family: var(--sans); font-size: 0.78rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .info-item .id { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); line-height: 1.5; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinning { display: inline-block; animation: spin 0.7s linear infinite; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <a href="index.html" class="back-link">← N3m35i's Tools</a>
+    <div class="logo-wrap">
+      <div class="logo-icon">📄</div>
+      <h1>PDF<span>Unlock</span></h1>
+    </div>
+    <p class="subtitle">Rimuovi restrizioni · stampa · copia · editing</p>
+  </header>
+
+  <div class="card">
+
+    <!-- Drop zone -->
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".pdf" onchange="onFileSelected(this)">
+      <div class="drop-hint">
+        <span class="drop-icon">📄</span>
+        <div class="drop-hint-text">
+          <strong>Trascina il file PDF qui</strong>
+          Solo file .pdf · nessun upload
+        </div>
+      </div>
+      <div class="file-info">
+        <span class="file-pdf-icon">📄</span>
+        <div class="file-meta">
+          <div class="fname" id="fileName">—</div>
+          <div class="fsize" id="fileSize">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- What gets unlocked -->
+    <div>
+      <div style="font-family:var(--mono);font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">// Restrizioni rimosse</div>
+      <div class="restrictions-grid">
+        <div class="restr-item"><span class="restr-icon">🖨️</span><span class="restr-label">Stampa bloccata</span></div>
+        <div class="restr-item"><span class="restr-icon">📋</span><span class="restr-label">Copia testo</span></div>
+        <div class="restr-item"><span class="restr-icon">✏️</span><span class="restr-label">Editing disabilitato</span></div>
+        <div class="restr-item"><span class="restr-icon">💬</span><span class="restr-label">Annotazioni bloccate</span></div>
+      </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="disclaimer">
+      <span class="disc-icon">⚠️</span>
+      <div class="disc-texts">
+        <p>Questo tool è destinato esclusivamente a file di cui sei proprietario o per cui hai autorizzazione esplicita alla modifica. L'utilizzo su file altrui senza consenso è responsabilità dell'utente.</p>
+        <p class="en">This tool is intended solely for files you own or have explicit authorisation to modify. Any use on third-party files without consent is the sole responsibility of the user.</p>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="status-box" id="statusBox">
+      <div class="status-header" id="statusHeader"></div>
+      <div class="status-list" id="statusList"></div>
+    </div>
+
+    <!-- Download -->
+    <button class="download-btn" id="downloadBtn" onclick="downloadResult()">
+      ⬇️ SCARICA PDF SBLOCCATO
+    </button>
+
+    <!-- Action -->
+    <button class="action-btn" id="actionBtn" onclick="runUnlock()" disabled>
+      <span id="btnIcon">🔓</span>
+      <span id="btnLabel">RIMUOVI RESTRIZIONI</span>
+    </button>
+
+  </div>
+
+  <div class="info-strip">
+    <div class="info-item">
+      <span class="ii">🚫</span>
+      <div class="it">No password</div>
+      <div class="id">Funziona senza<br>conoscere la password</div>
+    </div>
+    <div class="info-item">
+      <span class="ii">🌐</span>
+      <div class="it">100% Locale</div>
+      <div class="id">Nessun server.<br>Il file non lascia il browser.</div>
+    </div>
+    <div class="info-item">
+      <span class="ii">⚡</span>
+      <div class="it">Istantaneo</div>
+      <div class="id">Nessun attacco brute force —<br>solo rimozione permessi</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let selectedFile = null;
+let resultBytes  = null;
+let resultName   = '';
+
+// ── File input ──────────────────────────────────────
+function onFileSelected(input) {
+  if (input.files && input.files[0]) loadFile(input.files[0]);
+}
+
+function loadFile(file) {
+  selectedFile = file;
+  resultBytes  = null;
+  const zone = document.getElementById('dropZone');
+  zone.classList.add('has-file');
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = formatSize(file.size);
+  document.getElementById('actionBtn').disabled = false;
+  document.getElementById('downloadBtn').classList.remove('visible');
+  clearStatus();
+}
+
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') { document.getElementById('fileInput').value = ''; loadFile(f); }
+  else showStatus('error', '❌ File non valido.', ['Carica un file .pdf']);
+});
+
+// ── Core unlock ─────────────────────────────────────
+async function runUnlock() {
+  if (!selectedFile) return;
+
+  const btn = document.getElementById('actionBtn');
+  btn.disabled = true;
+  document.getElementById('btnIcon').innerHTML = '<span class="spinning">⏳</span>';
+  document.getElementById('btnLabel').textContent = 'Elaborazione…';
+  document.getElementById('downloadBtn').classList.remove('visible');
+  clearStatus();
+
+  try {
+    const arrayBuffer = await readFile(selectedFile);
+
+    // Load PDF with pdf-lib
+    let pdfDoc;
+    try {
+      pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer, {
+        ignoreEncryption: true
+      });
+    } catch (e) {
+      // If load fails, file might have a user password (open password)
+      throw new Error('Il PDF è protetto da password di apertura — non è possibile rimuovere le restrizioni senza la password.');
+    }
+
+    // Check if encrypted
+    const isEncrypted = pdfDoc.isEncrypted;
+
+    // pdf-lib with ignoreEncryption:true loads the doc and strips
+    // the encryption dictionary on save — this removes owner-password
+    // restrictions (print, copy, edit, annotate) without needing the password
+
+    // Re-save without encryption
+    const pdfBytes = await pdfDoc.save({
+      useObjectStreams: false,
+    });
+
+    resultBytes = pdfBytes;
+    const base = selectedFile.name.replace(/\.pdf$/i, '');
+    resultName  = `${base}_unlocked.pdf`;
+
+    const items = [
+      'Restrizioni di stampa rimosse',
+      'Restrizioni di copia testo rimosse',
+      'Restrizioni di editing rimosse',
+      'Restrizioni di annotazione rimosse',
+    ];
+
+    if (isEncrypted) {
+      showStatus('success', '✅ PDF sbloccato con successo!', items);
+    } else {
+      showStatus('warn', '⚠ Il PDF non aveva restrizioni rilevabili.', [
+        'Il file è stato comunque rielaborato.',
+        'Potrebbe già essere libero da restrizioni.'
+      ]);
+    }
+
+    document.getElementById('downloadBtn').classList.add('visible');
+
+  } catch (err) {
+    showStatus('error', '❌ ' + err.message, [
+      err.message.includes('password') ? '' : 'Assicurati che il file sia un PDF valido e non corrotto.'
+    ].filter(Boolean));
+  }
+
+  btn.disabled = false;
+  document.getElementById('btnIcon').textContent = '🔓';
+  document.getElementById('btnLabel').textContent = 'RIMUOVI RESTRIZIONI';
+}
+
+function downloadResult() {
+  if (!resultBytes) return;
+  const blob = new Blob([resultBytes], { type: 'application/pdf' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = resultName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Helpers ─────────────────────────────────────────
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('Errore lettura file.'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+function showStatus(type, header, items) {
+  const box = document.getElementById('statusBox');
+  box.className = 'status-box ' + type;
+  document.getElementById('statusHeader').textContent = header;
+  document.getElementById('statusList').innerHTML = items.map(i =>
+    `<div class="sitem"><span class="sdot"></span><span>${i}</span></div>`
+  ).join('');
+}
+
+function clearStatus() {
+  document.getElementById('statusBox').className = 'status-box';
+  document.getElementById('statusHeader').textContent = '';
+  document.getElementById('statusList').innerHTML = '';
+}
+</script>
+</body>
+</html>
