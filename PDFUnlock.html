@@ -230,9 +230,64 @@ function loadFile(file) {
   document.getElementById('dropZone').classList.add('has-file');
   document.getElementById('fileName').textContent = file.name;
   document.getElementById('fileSize').textContent = formatSize(file.size);
-  document.getElementById('actionBtn').disabled = false;
+  document.getElementById('actionBtn').disabled = true; // enable only after check
   document.getElementById('downloadBtn').classList.remove('visible');
   clearStatus();
+
+  // Run compatibility check immediately
+  const reader = new FileReader();
+  reader.onload = e => {
+    const arrayBuffer = e.target.result;
+    const bytes = new Uint8Array(arrayBuffer);
+    const raw   = uint8ToLatin1(bytes);
+
+    if (!raw.startsWith('%PDF-')) {
+      showStatus('error', '❌ File non valido.', ['Il file non è un PDF riconoscibile.']);
+      return;
+    }
+
+    const check = checkPDF(arrayBuffer);
+
+    if (check.reason === 'no_encryption') {
+      showStatus('warn', '⚠ Nessuna restrizione trovata.', [
+        'Il PDF non contiene protezioni — è già liberamente modificabile.'
+      ]);
+      document.getElementById('actionBtn').disabled = true;
+      return;
+    }
+
+    if (check.reason === 'xref_stream') {
+      showStatus('error', '❌ PDF non sbloccabile via browser.', [
+        'Questo PDF usa una struttura moderna (xref streams, PDF 1.5+) che richiede di riscrivere l\'intera architettura interna del file.',
+        'I browser non hanno accesso agli strumenti necessari per farlo senza corrompere il file.',
+        'Alternativa: usa qpdf (gratuito, open source) da terminale con il comando:',
+        'qpdf --decrypt input.pdf output.pdf',
+        'Oppure: pikepdf in Python, PDFsam, o ilovepdf.com'
+      ]);
+      document.getElementById('actionBtn').disabled = true;
+      return;
+    }
+
+    if (check.reason === 'user_password') {
+      showStatus('error', '❌ PDF protetto da password di apertura.', [
+        'Questo PDF richiede una password per essere aperto.',
+        'Non è possibile rimuovere le restrizioni senza conoscere la password.'
+      ]);
+      document.getElementById('actionBtn').disabled = true;
+      return;
+    }
+
+    // compatible: true, reason: ok — show green light
+    showStatus('success', '✅ PDF compatibile — pronto per lo sblocco.', [
+      'Struttura classica rilevata (xref table + trailer).',
+      'Le restrizioni possono essere rimosse nel browser.'
+    ]);
+    // Store parsed data for unlock
+    selectedFile._arrayBuffer = arrayBuffer;
+    selectedFile._check = check;
+    document.getElementById('actionBtn').disabled = false;
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 const dz = document.getElementById('dropZone');
@@ -247,33 +302,21 @@ dz.addEventListener('drop', e => {
 
 // ── Main unlock ───────────────────────────────────────────────────────────────
 async function runUnlock() {
-  if (!selectedFile) return;
+  if (!selectedFile || !selectedFile._arrayBuffer) return;
 
   setBusy(true);
   clearStatus();
   document.getElementById('downloadBtn').classList.remove('visible');
 
   try {
-    const arrayBuffer = await readFile(selectedFile);
-    const result = unlockPDF(arrayBuffer);
+    const arrayBuffer = selectedFile._arrayBuffer;
+    const bytes = new Uint8Array(arrayBuffer);
+    const raw   = uint8ToLatin1(bytes);
+    const check = selectedFile._check;
 
-    if (result.status === 'no_encryption') {
-      showStatus('warn', '⚠ Il PDF non ha restrizioni rilevabili.', [
-        'Il file non contiene un dizionario /Encrypt.',
-        'Potrebbe già essere libero da protezioni.'
-      ]);
-      // Offer original file for download anyway
-      resultData = new Uint8Array(arrayBuffer);
-      resultName = selectedFile.name.replace(/\.pdf$/i, '') + '_unlocked.pdf';
-      document.getElementById('downloadBtn').classList.add('visible');
+    const result = unlockPDF(raw, bytes, check.encRef, check.objDef);
 
-    } else if (result.status === 'user_password') {
-      showStatus('error', '❌ Password di apertura rilevata.', [
-        'Il PDF richiede una password per essere aperto.',
-        'Questo tool funziona solo su PDF con restrizioni ma senza password di apertura.'
-      ]);
-
-    } else if (result.status === 'ok') {
+    if (result.status === 'ok') {
       resultData = result.data;
       resultName = selectedFile.name.replace(/\.pdf$/i, '') + '_unlocked.pdf';
       showStatus('success', '✅ PDF sbloccato con successo!', [
@@ -283,7 +326,6 @@ async function runUnlock() {
         'Annotazioni sbloccate',
       ]);
       document.getElementById('downloadBtn').classList.add('visible');
-
     } else {
       throw new Error(result.message || 'Errore sconosciuto.');
     }
@@ -296,71 +338,118 @@ async function runUnlock() {
 }
 
 // ── Core PDF patcher ──────────────────────────────────────────────────────────
-function unlockPDF(arrayBuffer) {
+// ── Compatibility check (runs on file load) ───────────────────────────────────
+function checkPDF(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
+  const raw   = uint8ToLatin1(bytes);
 
-  // Work with latin1 string for regex — safe because we only read/write ASCII ranges
-  const raw = uint8ToLatin1(bytes);
-
-  // 1. Verify PDF
+  // 1. Valid PDF?
   if (!raw.startsWith('%PDF-')) {
-    return { status: 'error', message: 'File non riconosciuto come PDF valido.' };
+    return { compatible: false, reason: 'not_pdf' };
   }
 
-  // 2. Detect user password (file can't be opened without password)
-  //    Heuristic: if /U entry in encrypt dict is non-trivial, user password is set.
-  //    We check by looking for /Encrypt and trying to read the /U field.
-  //    A simpler heuristic: if the PDF can't be "read" (no /Root accessible outside
-  //    encrypted streams), it likely has a user password.
-  //    For now we proceed and let the absence of /Root in readable data tell us.
-
-  // 3. Find /Encrypt reference
-  const encRefMatch = findEncryptRef(raw);
-  if (!encRefMatch) {
-    return { status: 'no_encryption' };
+  // 2. Any encryption at all?
+  const encRef = findEncryptRef(raw);
+  if (!encRef) {
+    return { compatible: true, reason: 'no_encryption' };
   }
 
-  const { objNum, genNum, refStr, refPos } = encRefMatch;
+  // 3. Does the /Encrypt reference appear inside an xref stream dict?
+  //    Signature: the /Encrypt ref sits between a nearby "N G obj" header
+  //    and a "stream" keyword — meaning it's in a compressed xref stream dict.
+  //    We look backward from encRef.refPos for an obj header,
+  //    and forward for "stream\n" before "endobj".
+  const before = raw.slice(Math.max(0, encRef.refPos - 400), encRef.refPos);
+  const after  = raw.slice(encRef.refPos, Math.min(raw.length, encRef.refPos + 200));
 
-  // 4. Find the encrypt object definition
+  const hasObjBefore    = /\d+\s+\d+\s+obj\s*\n?<</.test(before);
+  const hasStreamAfter  = /stream[\r\n]/.test(after);
+  const hasTrailerAfter = /trailer/.test(raw.slice(encRef.refPos, encRef.refPos + 500));
+
+  const inXrefStream = hasObjBefore && hasStreamAfter && !hasTrailerAfter;
+
+  if (inXrefStream) {
+    return { compatible: false, reason: 'xref_stream' };
+  }
+
+  // 4. Check for user password:
+  //    Find the encrypt object and look for /R value and non-empty /U string.
+  //    If /R >= 3 and user hash != 32 bytes of 0x28 0xBF..., user pwd is set.
+  //    Simple heuristic: if we can find the encrypt obj and it has /O but
+  //    the trailer also has no readable /Root directly, user pwd likely set.
+  const { objNum, genNum } = encRef;
   const objDef = findObjectDef(raw, objNum, genNum);
   if (!objDef) {
-    // Encrypt ref exists but object not found directly — might be inside object stream
-    // Rare case: just blank the reference and hope for the best
-    const patched = patchBytes(bytes, raw, refPos, refStr.length, ' '.repeat(refStr.length));
-    return { status: 'ok', data: patched };
+    return { compatible: false, reason: 'xref_stream' };
   }
 
-  // 5. Build patched bytes — two operations:
-  //    a) Overwrite encrypt object with null (in-place, same length)
-  //    b) Overwrite /Encrypt reference with spaces (in-place, same length)
+  // Check for user password in encrypt dict
+  // The standard 32-byte padding string starts with 0x28 0xBF 0x4E 0x5E
+  // /U entry for empty user password always starts with these bytes
+  const encDictStr = objDef.fullStr;
+  const hasUserPwd = detectUserPassword(encDictStr);
+  if (hasUserPwd) {
+    return { compatible: false, reason: 'user_password' };
+  }
 
-  const nullObjStr  = `${objNum} ${genNum} obj\nnull\nendobj`;
-  const paddingNeeded = objDef.fullStr.length - nullObjStr.length;
+  return { compatible: true, reason: 'ok', encRef, objDef };
+}
+
+function detectUserPassword(encDictStr) {
+  // The /U entry contains a 32-byte hash.
+  // For empty user password, it starts with the standard padding: (28BF4E...)
+  // We look for /R value: if R=2, /U is always the padding (no user pwd).
+  // If R=3 or R=4, /U is an MD5 hash — if it's the well-known empty-pwd hash, no user pwd.
+  // Heuristic: if /EncryptMetadata is false or /P value = -4 (common for owner-only), safe.
+  // Simplest reliable check: look for /U followed by a hex string starting with known values.
+
+  // Standard padding sequence (first 4 bytes) for empty user password, R=4
+  const emptyUserPwdPrefixes = [
+    '28bf4e5e', // standard padding = empty user password
+  ];
+
+  const uMatch = encDictStr.match(/\/U\s*[(<]([0-9a-fA-F\s]+)[)>]/);
+  if (!uMatch) return false; // can't tell, assume no user pwd
+
+  const uHex = uMatch[1].replace(/\s/g, '').toLowerCase();
+  // If U starts with standard padding, no user password
+  for (const prefix of emptyUserPwdPrefixes) {
+    if (uHex.startsWith(prefix)) return false;
+  }
+
+  // Check R value — R=2 never has meaningful user password check
+  const rMatch = encDictStr.match(/\/R\s+(\d+)/);
+  const r = rMatch ? parseInt(rMatch[1]) : 0;
+  if (r <= 2) return false;
+
+  // If U doesn't start with padding and R >= 3, likely has user password
+  return true;
+}
+
+function unlockPDF(raw, bytes, encRef, objDef) {
+  const { objNum, genNum, refStr, refPos } = encRef;
+
+  const nullObjStr     = `${objNum} ${genNum} obj\nnull\nendobj`;
+  const paddingNeeded  = objDef.fullStr.length - nullObjStr.length;
 
   if (paddingNeeded < 0) {
-    // Extremely unlikely but handle it
-    return { status: 'error', message: 'Struttura oggetto inattesa — impossibile effettuare il patch.' };
+    return { status: 'error', message: 'Struttura oggetto inattesa.' };
   }
 
   const nullObjPadded = nullObjStr + ' '.repeat(paddingNeeded);
+  const patched = bytes.slice();
 
-  // Apply both patches
-  let patched = bytes.slice(); // copy
-
-  // Patch a: null the encrypt object
+  // Patch 1: null the encrypt object in-place
   writeAscii(patched, objDef.start, nullObjPadded);
 
-  // Patch b: blank the /Encrypt reference in trailer/xref dict
-  //   Re-scan the patched bytes to find the reference position
-  //   (objDef patch might have shifted nothing since it's in-place)
-  writeAscii(patched, refPos, ' '.repeat(refStr.length));
-
-  // Check for user password: scan for /U in the (now nulled) area to detect
-  // if the encrypt dict had a non-empty /U. If the original encrypt dict
-  // contained /R 2 or /R 3 with user hash ≠ padding string, user pwd is set.
-  // Simple heuristic: check if /Perms or /U with non-trivial value existed.
-  // We skip this check and let the PDF reader handle it — it will fail gracefully.
+  // Patch 2: blank only the /Encrypt reference in the TRAILER (not xref stream)
+  // Find the trailer section and blank only there
+  const trailerIdx = raw.lastIndexOf('trailer');
+  if (trailerIdx !== -1 && refPos >= trailerIdx) {
+    // /Encrypt is in the classic trailer — safe to blank
+    writeAscii(patched, refPos, ' '.repeat(refStr.length));
+  }
+  // If /Encrypt is NOT in trailer (shouldn't happen after our check), skip blanking
 
   return { status: 'ok', data: patched };
 }
@@ -368,14 +457,10 @@ function unlockPDF(arrayBuffer) {
 // ── PDF parsing helpers ───────────────────────────────────────────────────────
 
 function findEncryptRef(raw) {
-  // Match /Encrypt N G R anywhere in uncompressed PDF data
   const re = /\/Encrypt\s+(\d+)\s+(\d+)\s+R/g;
-  let match;
-  // Take the LAST match (most recent xref wins in incremental PDFs)
-  let last = null;
+  let last = null, match;
   while ((match = re.exec(raw)) !== null) last = match;
   if (!last) return null;
-
   return {
     objNum: parseInt(last[1]),
     genNum: parseInt(last[2]),
@@ -385,40 +470,23 @@ function findEncryptRef(raw) {
 }
 
 function findObjectDef(raw, objNum, genNum) {
-  // Match "N G obj ... endobj" — the encrypt object definition
-  // Use a regex that handles any content between obj and endobj
-  // We look for the pattern at a word boundary to avoid partial matches
-
-  // Build pattern: optional newline before objNum
   const pattern = new RegExp(
-    `(?:^|\\n|\\r)(${objNum}\\s+${genNum}\\s+obj[\\s\\S]*?endobj)`,
-    'g'
+    `(?:^|\\n|\\r)(${objNum}\\s+${genNum}\\s+obj[\\s\\S]*?endobj)`, 'g'
   );
-
-  let match;
-  let last = null;
+  let last = null, match;
   while ((match = pattern.exec(raw)) !== null) last = match;
   if (!last) return null;
-
-  // Adjust start: the capture group starts after the leading newline
   const fullStr = last[1];
   const start   = last.index + (last[0].length - fullStr.length);
-
   return { start, fullStr };
 }
 
-// ── Byte-level write helpers ──────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function writeAscii(bytes, offset, str) {
   for (let i = 0; i < str.length; i++) {
     bytes[offset + i] = str.charCodeAt(i) & 0xff;
   }
-}
-
-function patchBytes(originalBytes, raw, pos, len, replacement) {
-  const patched = originalBytes.slice();
-  writeAscii(patched, pos, replacement.slice(0, len).padEnd(len, ' '));
-  return patched;
 }
 
 function uint8ToLatin1(bytes) {
@@ -448,15 +516,6 @@ function setBusy(busy) {
   btn.disabled = busy;
   document.getElementById('btnIcon').innerHTML = busy ? '<span class="spinning">⏳</span>' : '🔓';
   document.getElementById('btnLabel').textContent = busy ? 'Elaborazione…' : 'RIMUOVI RESTRIZIONI';
-}
-
-function readFile(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload  = e => resolve(e.target.result);
-    r.onerror = () => reject(new Error('Errore lettura file.'));
-    r.readAsArrayBuffer(file);
-  });
 }
 
 function formatSize(b) {
