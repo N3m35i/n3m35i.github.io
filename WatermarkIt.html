@@ -552,6 +552,15 @@
         </div>
       </div>
 
+      <!-- Rows -->
+      <div class="field">
+        <label>Numero di righe</label>
+        <div class="range-wrap">
+          <input type="range" id="wmRows" min="1" max="20" value="5" oninput="onRange('wmRows','valRows',''); renderPreview()">
+          <span class="range-val" id="valRows">5</span>
+        </div>
+      </div>
+
       <!-- Color -->
       <div class="field">
         <label>Colore</label>
@@ -663,6 +672,7 @@ function renderPreview() {
   const opacity  = parseInt(document.getElementById('wmOpacity').value) / 100;
   const rotation = parseInt(document.getElementById('wmRotation').value) * Math.PI / 180;
   const spacing  = parseInt(document.getElementById('wmSpacing').value);
+  const rows     = parseInt(document.getElementById('wmRows').value);
   const color    = document.getElementById('wmColor').value;
   const font     = document.getElementById('wmFont').value;
 
@@ -693,13 +703,15 @@ function renderPreview() {
   ctx.translate(cx, cy);
   ctx.rotate(rotation);
 
+  // rows controls vertical count, cols auto-fill horizontal
+  const rowSpacing = canvas.height / rows;
   const cols = Math.ceil(diag / scaledSpacing) + 2;
-  const rows = Math.ceil(diag / scaledSpacing) + 2;
+  const halfRows = Math.ceil(rows / 2) + 1;
 
-  for (let r = -rows; r <= rows; r++) {
+  for (let r = -halfRows; r <= halfRows; r++) {
     for (let c = -cols; c <= cols; c++) {
       const x = c * scaledSpacing;
-      const y = r * scaledSpacing;
+      const y = r * rowSpacing;
       ctx.fillText(text, x, y);
     }
   }
@@ -712,10 +724,10 @@ function renderPreview() {
   info.textContent = `Anteprima: ${canvas.width}×${canvas.height}px (originale: ${loadedImage.width}×${loadedImage.height}px)`;
 
   // Generate full-res blob for download
-  generateFullRes(text, size, opacity, rotation, color, font, spacing);
+  generateFullRes(text, size, opacity, rotation, color, font, spacing, rows);
 }
 
-function generateFullRes(text, size, opacity, rotation, color, font, spacing) {
+function generateFullRes(text, size, opacity, rotation, color, font, spacing, rows) {
   const canvas = document.createElement('canvas');
   canvas.width  = loadedImage.width;
   canvas.height = loadedImage.height;
@@ -735,12 +747,13 @@ function generateFullRes(text, size, opacity, rotation, color, font, spacing) {
   ctx.translate(cx, cy);
   ctx.rotate(rotation);
 
+  const rowSpacing = canvas.height / rows;
   const cols = Math.ceil(diag / spacing) + 2;
-  const rows = Math.ceil(diag / spacing) + 2;
+  const halfRows = Math.ceil(rows / 2) + 1;
 
-  for (let r = -rows; r <= rows; r++) {
+  for (let r = -halfRows; r <= halfRows; r++) {
     for (let c = -cols; c <= cols; c++) {
-      ctx.fillText(text, c * spacing, r * spacing);
+      ctx.fillText(text, c * spacing, r * rowSpacing);
     }
   }
 
