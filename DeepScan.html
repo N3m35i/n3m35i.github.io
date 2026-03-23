@@ -187,6 +187,25 @@
   /* Empty state */
   .empty-section { padding: 20px 22px; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
 
+  /* GPS Map */
+  .gps-map-wrap {
+    padding: 16px 22px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .gps-map-label {
+    font-family: var(--mono); font-size: 0.65rem; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+  .gps-map-frame {
+    width: 100%; height: 260px; border-radius: 10px;
+    border: 1px solid var(--border); overflow: hidden;
+    position: relative;
+  }
+  .gps-map-frame iframe {
+    width: 100%; height: 100%; border: none; display: block;
+    filter: invert(0.9) hue-rotate(180deg) saturate(0.7) brightness(0.85);
+  }
+
   /* Copy toast */
   .toast {
     position: fixed; bottom: 30px; right: 30px;
@@ -888,7 +907,18 @@ function parsePDFMeta(bytes) {
 }
 
 function decodePDFString(s) {
-  return s.replace(/\\n/g,'\n').replace(/\\r/g,'\r').replace(/\\t/g,'\t').replace(/\\\\/g,'\\').replace(/\\([0-7]{3})/g, (m,o) => String.fromCharCode(parseInt(o,8)));
+  s = s.replace(/\\n/g,'\n').replace(/\\r/g,'\r').replace(/\\t/g,'\t').replace(/\\\\/g,'\\').replace(/\\([0-7]{3})/g, (m,o) => String.fromCharCode(parseInt(o,8)));
+  return parsePDFDate(s);
+}
+
+function parsePDFDate(s) {
+  const m = s.match(/^D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})([+\-Z])?(\d{2})?'?(\d{2})?/);
+  if (!m) return s;
+  const [, year, month, day, hour, min, sec, tz, tzH, tzM] = m;
+  let dateStr = `${day}/${month}/${year} ${hour}:${min}:${sec}`;
+  if (tz && tz !== 'Z' && tzH) dateStr += ` (UTC${tz}${tzH}:${tzM || '00'})`;
+  else if (tz === 'Z') dateStr += ' (UTC)';
+  return dateStr;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1400,6 +1430,7 @@ function renderResults(file, sections, ext) {
           <div class="meta-table">
             ${section.rows.map(row => renderRow(row)).join('')}
           </div>
+          ${section.gps ? renderGPSMap(section.gps) : ''}
         </div>
       </div>
     `;
@@ -1423,6 +1454,22 @@ function renderRow(row) {
     <div class="meta-row">
       <div class="meta-key">${escHtml(row.k)}</div>
       <div class="meta-val ${row.cls||''}">${valHtml}</div>
+    </div>
+  `;
+}
+
+function renderGPSMap(coords) {
+  if (!coords || coords.lat == null || coords.lon == null) return '';
+  const lat = coords.lat.toFixed(6);
+  const lon = coords.lon.toFixed(6);
+  const zoom = 15;
+  const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${parseFloat(lon)-0.01},${parseFloat(lat)-0.01},${parseFloat(lon)+0.01},${parseFloat(lat)+0.01}&layer=mapnik&marker=${lat},${lon}`;
+  return `
+    <div class="gps-map-wrap">
+      <div class="gps-map-label">// Posizione su mappa</div>
+      <div class="gps-map-frame">
+        <iframe src="${osmUrl}" loading="lazy" allowfullscreen title="Mappa GPS"></iframe>
+      </div>
     </div>
   `;
 }
