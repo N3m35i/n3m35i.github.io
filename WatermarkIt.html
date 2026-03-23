@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WatermarkIt — Filigrana le tue immagini</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a26;
+    --border: #2a2a40;
+    --accent: #ff9500;
+    --accent-dim: rgba(255,149,0,0.12);
+    --accent-border: rgba(255,149,0,0.3);
+    --text: #e8e8f0;
+    --muted: #6666a0;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 80px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.25;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -200px; right: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(255,149,0,0.05) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 10s ease-in-out infinite alternate;
+  }
+
+  @keyframes drift {
+    from { transform: translate(0,0); }
+    to   { transform: translate(-60px, 50px); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 780px;
+    animation: fadeUp 0.5s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(20px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  /* Header */
+  header {
+    text-align: center;
+    margin-bottom: 44px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-decoration: none;
+    margin-bottom: 24px;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--text); }
+
+  .logo-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+
+  h1 {
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  /* Two-col layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media (max-width: 640px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .card-title {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 36px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .drop-zone.has-file {
+    border-style: solid;
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    padding: 20px 16px;
+  }
+
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%; height: 100%;
+  }
+
+  .drop-icon { font-size: 2rem; margin-bottom: 8px; display: block; }
+
+  .drop-hint-text {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .drop-hint-text strong {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text);
+    margin-bottom: 4px;
+    font-family: var(--sans);
+  }
+
+  .file-info { display: none; }
+  .has-file .file-info { display: block; }
+  .has-file .drop-hint { display: none; }
+
+  .file-info .fname {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text);
+    word-break: break-all;
+  }
+
+  .file-info .fdim {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* Field */
+  .field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .field input[type="text"],
+  .field input[type="range"],
+  .field select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field input[type="text"]:focus,
+  .field select:focus {
+    border-color: var(--accent);
+  }
+
+  .field input[type="text"]::placeholder { color: var(--muted); }
+
+  .field select option { background: var(--surface2); }
+
+  /* Range slider */
+  .range-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .range-wrap input[type="range"] {
+    padding: 0;
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--border);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .range-wrap input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  .range-val {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--accent);
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* Color picker row */
+  .color-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .color-row input[type="color"] {
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: none;
+    cursor: pointer;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+
+  .color-presets {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .preset-color {
+    width: 24px; height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .preset-color:hover, .preset-color.active {
+    border-color: var(--accent);
+    transform: scale(1.15);
+  }
+
+  /* Action btn */
+  .action-btn {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #000;
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .action-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(255,149,0,0.3);
+  }
+
+  .action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* Download btn */
+  .download-btn {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--accent-border);
+    border-radius: 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+  }
+
+  .download-btn.visible { display: flex; }
+  .download-btn:hover { background: rgba(255,149,0,0.2); }
+
+  /* Preview panel */
+  .preview-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 400px;
+  }
+
+  .preview-title {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .preview-badge {
+    font-size: 0.6rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent-border);
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+
+  .preview-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface2);
+    border-radius: 10px;
+    overflow: hidden;
+    min-height: 300px;
+    position: relative;
+  }
+
+  .preview-placeholder {
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .preview-placeholder .ph-icon { font-size: 2.5rem; margin-bottom: 10px; display: block; }
+  .preview-placeholder p {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 1px;
+  }
+
+  #previewCanvas {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 8px;
+    display: none;
+    object-fit: contain;
+  }
+
+  .preview-info {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    display: none;
+  }
+
+  .preview-info.visible { display: block; }
+
+  /* Checkerboard pattern for transparent images */
+  .preview-area {
+    background-image:
+      linear-gradient(45deg, #1a1a26 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1a26 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1a26 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1a26 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    background-color: #111118;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <a href="index.html" class="back-link">← N3m35i's Tools</a>
+    <div class="logo-wrap">
+      <div class="logo-icon">🖼️</div>
+      <h1>Watermark<span>It</span></h1>
+    </div>
+    <p class="subtitle">Filigrana · Anteprima istantanea · Zero upload</p>
+  </header>
+
+  <div class="layout">
+
+    <!-- Controls -->
+    <div class="card">
+      <div class="card-title">// Impostazioni</div>
+
+      <!-- Image upload -->
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept="image/*" onchange="onFileSelected(this)">
+        <div class="drop-hint">
+          <span class="drop-icon">🖼️</span>
+          <div class="drop-hint-text">
+            <strong>Carica un'immagine</strong>
+            JPG, PNG, WEBP, GIF…
+          </div>
+        </div>
+        <div class="file-info">
+          <div class="fname" id="fileName">—</div>
+          <div class="fdim" id="fileDim">—</div>
+        </div>
+      </div>
+
+      <!-- Watermark text -->
+      <div class="field">
+        <label>Testo filigrana</label>
+        <input type="text" id="wmText" value="© — testo filigrana" placeholder="es. BOZZA, © Nome, NON PAGATO" oninput="renderPreview()">
+      </div>
+
+      <!-- Font size -->
+      <div class="field">
+        <label>Dimensione testo</label>
+        <div class="range-wrap">
+          <input type="range" id="wmSize" min="10" max="120" value="32" oninput="onRange('wmSize','valSize'); renderPreview()">
+          <span class="range-val" id="valSize">32px</span>
+        </div>
+      </div>
+
+      <!-- Opacity -->
+      <div class="field">
+        <label>Opacità</label>
+        <div class="range-wrap">
+          <input type="range" id="wmOpacity" min="5" max="100" value="35" oninput="onRange('wmOpacity','valOpacity','%'); renderPreview()">
+          <span class="range-val" id="valOpacity">35%</span>
+        </div>
+      </div>
+
+      <!-- Rotation -->
+      <div class="field">
+        <label>Rotazione</label>
+        <div class="range-wrap">
+          <input type="range" id="wmRotation" min="-90" max="90" value="-30" oninput="onRange('wmRotation','valRotation','°'); renderPreview()">
+          <span class="range-val" id="valRotation">-30°</span>
+        </div>
+      </div>
+
+      <!-- Spacing -->
+      <div class="field">
+        <label>Spaziatura griglia</label>
+        <div class="range-wrap">
+          <input type="range" id="wmSpacing" min="50" max="400" value="180" oninput="onRange('wmSpacing','valSpacing','px'); renderPreview()">
+          <span class="range-val" id="valSpacing">180px</span>
+        </div>
+      </div>
+
+      <!-- Color -->
+      <div class="field">
+        <label>Colore</label>
+        <div class="color-row">
+          <input type="color" id="wmColor" value="#ffffff" oninput="syncColorFromPicker(); renderPreview()">
+          <div class="color-presets">
+            <div class="preset-color active" style="background:#ffffff" onclick="setColor('#ffffff')" title="Bianco"></div>
+            <div class="preset-color" style="background:#000000; border:1px solid #444" onclick="setColor('#000000')" title="Nero"></div>
+            <div class="preset-color" style="background:#ff4d6d" onclick="setColor('#ff4d6d')" title="Rosso"></div>
+            <div class="preset-color" style="background:#ff9500" onclick="setColor('#ff9500')" title="Arancio"></div>
+            <div class="preset-color" style="background:#c8ff00" onclick="setColor('#c8ff00')" title="Lime"></div>
+            <div class="preset-color" style="background:#00cfff" onclick="setColor('#00cfff')" title="Ciano"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Font -->
+      <div class="field">
+        <label>Font</label>
+        <select id="wmFont" onchange="renderPreview()">
+          <option value="Arial">Arial</option>
+          <option value="Georgia">Georgia</option>
+          <option value="'Courier New'">Courier New</option>
+          <option value="Impact">Impact</option>
+          <option value="'Times New Roman'">Times New Roman</option>
+          <option value="Verdana">Verdana</option>
+        </select>
+      </div>
+
+      <button class="action-btn" id="downloadBtn" onclick="downloadImage()" disabled>
+        <span>⬇️</span> SCARICA IMMAGINE
+      </button>
+
+    </div>
+
+    <!-- Preview -->
+    <div class="preview-panel">
+      <div class="preview-title">
+        // Anteprima
+        <span class="preview-badge" id="previewBadge" style="display:none">LIVE</span>
+      </div>
+      <div class="preview-area">
+        <div class="preview-placeholder" id="placeholder">
+          <span class="ph-icon">🖼️</span>
+          <p>carica un'immagine<br>per vedere l'anteprima</p>
+        </div>
+        <canvas id="previewCanvas"></canvas>
+      </div>
+      <div class="preview-info" id="previewInfo"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+let loadedImage = null;
+let outputBlob = null;
+let outputFilename = 'watermarked.jpg';
+
+// ── File input ──────────────────────────────
+function onFileSelected(input) {
+  if (input.files && input.files[0]) loadFile(input.files[0]);
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      loadedImage = img;
+      outputFilename = 'wm_' + file.name;
+
+      const zone = document.getElementById('dropZone');
+      zone.classList.add('has-file');
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileDim').textContent =
+        img.width + ' × ' + img.height + 'px · ' + formatSize(file.size);
+
+      document.getElementById('placeholder').style.display = 'none';
+      document.getElementById('previewCanvas').style.display = 'block';
+      document.getElementById('previewBadge').style.display = 'inline-block';
+      document.getElementById('downloadBtn').disabled = false;
+
+      renderPreview();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Drag & drop ─────────────────────────────
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) { document.getElementById('fileInput').value=''; loadFile(f); }
+});
+
+// ── Render ──────────────────────────────────
+function renderPreview() {
+  if (!loadedImage) return;
+
+  const text     = document.getElementById('wmText').value || '© watermark';
+  const size     = parseInt(document.getElementById('wmSize').value);
+  const opacity  = parseInt(document.getElementById('wmOpacity').value) / 100;
+  const rotation = parseInt(document.getElementById('wmRotation').value) * Math.PI / 180;
+  const spacing  = parseInt(document.getElementById('wmSpacing').value);
+  const color    = document.getElementById('wmColor').value;
+  const font     = document.getElementById('wmFont').value;
+
+  const canvas = document.getElementById('previewCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // Cap preview size for performance
+  const maxW = 700, maxH = 600;
+  let w = loadedImage.width, h = loadedImage.height;
+  const ratio = Math.min(maxW / w, maxH / h, 1);
+  canvas.width  = Math.round(w * ratio);
+  canvas.height = Math.round(h * ratio);
+
+  ctx.drawImage(loadedImage, 0, 0, canvas.width, canvas.height);
+
+  // Watermark grid
+  const scaledSize = Math.max(8, Math.round(size * ratio));
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = color;
+  ctx.font = `bold ${scaledSize}px ${font}`;
+  ctx.textBaseline = 'middle';
+
+  const scaledSpacing = Math.round(spacing * ratio);
+  const diag = Math.sqrt(canvas.width ** 2 + canvas.height ** 2);
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+
+  const cols = Math.ceil(diag / scaledSpacing) + 2;
+  const rows = Math.ceil(diag / scaledSpacing) + 2;
+
+  for (let r = -rows; r <= rows; r++) {
+    for (let c = -cols; c <= cols; c++) {
+      const x = c * scaledSpacing;
+      const y = r * scaledSpacing;
+      ctx.fillText(text, x, y);
+    }
+  }
+
+  ctx.restore();
+
+  // Info
+  const info = document.getElementById('previewInfo');
+  info.className = 'preview-info visible';
+  info.textContent = `Anteprima: ${canvas.width}×${canvas.height}px (originale: ${loadedImage.width}×${loadedImage.height}px)`;
+
+  // Generate full-res blob for download
+  generateFullRes(text, size, opacity, rotation, color, font, spacing);
+}
+
+function generateFullRes(text, size, opacity, rotation, color, font, spacing) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = loadedImage.width;
+  canvas.height = loadedImage.height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.drawImage(loadedImage, 0, 0);
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = color;
+  ctx.font = `bold ${size}px ${font}`;
+  ctx.textBaseline = 'middle';
+
+  const diag = Math.sqrt(canvas.width ** 2 + canvas.height ** 2);
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+
+  const cols = Math.ceil(diag / spacing) + 2;
+  const rows = Math.ceil(diag / spacing) + 2;
+
+  for (let r = -rows; r <= rows; r++) {
+    for (let c = -cols; c <= cols; c++) {
+      ctx.fillText(text, c * spacing, r * spacing);
+    }
+  }
+
+  ctx.restore();
+
+  canvas.toBlob(blob => {
+    outputBlob = blob;
+  }, 'image/jpeg', 0.92);
+}
+
+function downloadImage() {
+  if (!outputBlob) return;
+  const url = URL.createObjectURL(outputBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = outputFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Helpers ─────────────────────────────────
+function onRange(id, valId, suffix = 'px') {
+  document.getElementById(valId).textContent = document.getElementById(id).value + suffix;
+}
+
+function setColor(hex) {
+  document.getElementById('wmColor').value = hex;
+  document.querySelectorAll('.preset-color').forEach(el => {
+    el.classList.toggle('active', el.style.background === hex ||
+      el.style.backgroundColor === hexToRgb(hex));
+  });
+  renderPreview();
+}
+
+function syncColorFromPicker() {
+  document.querySelectorAll('.preset-color').forEach(el => el.classList.remove('active'));
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+</script>
+</body>
+</html>
