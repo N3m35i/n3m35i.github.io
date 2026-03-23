@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepScan — Lettore Metadati</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a26;
+    --surface3: #20202e;
+    --border: #2a2a40;
+    --accent: #a855f7;
+    --accent-dim: rgba(168,85,247,0.08);
+    --accent-border: rgba(168,85,247,0.28);
+    --text: #e8e8f0;
+    --muted: #6666a0;
+    --green: #00ff88;
+    --yellow: #ffaa00;
+    --red: #ff4d6d;
+    --cyan: #00cfff;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 80px; overflow-x: hidden; position: relative;
+  }
+
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.2; pointer-events: none; z-index: 0;
+  }
+
+  body::after {
+    content: ''; position: fixed; top: -200px; right: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(168,85,247,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+    animation: drift 12s ease-in-out infinite alternate;
+  }
+
+  @keyframes drift { from { transform: translate(0,0); } to { transform: translate(-50px,60px); } }
+
+  .container { position: relative; z-index: 1; width: 100%; max-width: 860px; animation: fadeUp 0.5s ease; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+  header { text-align: center; margin-bottom: 44px; }
+
+  .back-link { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 1px; color: var(--muted); text-decoration: none; margin-bottom: 24px; transition: color 0.2s; }
+  .back-link:hover { color: var(--text); }
+
+  .logo-wrap { display: inline-flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .logo-icon { width: 44px; height: 44px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -1px; }
+  h1 span { color: var(--accent); }
+  .subtitle { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-top: 6px; }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 16px; padding: 52px 24px;
+    text-align: center; cursor: pointer; transition: all 0.25s; position: relative; overflow: hidden;
+    background: var(--surface); margin-bottom: 20px;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+  .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-icon { font-size: 2.8rem; margin-bottom: 12px; display: block; transition: transform 0.2s; }
+  .drop-zone:hover .drop-icon { transform: scale(1.1); }
+  .drop-text { font-family: var(--mono); font-size: 0.73rem; color: var(--muted); line-height: 1.6; }
+  .drop-text strong { display: block; font-size: 1rem; color: var(--text); font-family: var(--sans); font-weight: 600; margin-bottom: 6px; letter-spacing: -0.3px; }
+  .drop-formats { margin-top: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .fmt-tag { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+
+  /* Scanning indicator */
+  .scanning-bar {
+    display: none; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 20px; margin-bottom: 20px;
+    font-family: var(--mono); font-size: 0.75rem; color: var(--muted);
+  }
+  .scanning-bar.visible { display: flex; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin 0.8s linear infinite; }
+
+  /* Results */
+  #results { display: none; flex-direction: column; gap: 16px; }
+  #results.visible { display: flex; }
+
+  /* Summary card */
+  .summary-card {
+    background: var(--surface); border: 1px solid var(--accent-border);
+    border-radius: 16px; padding: 24px; display: flex; gap: 20px; align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .file-icon-big { font-size: 3rem; flex-shrink: 0; }
+
+  .summary-info { flex: 1; min-width: 200px; }
+  .summary-filename { font-family: var(--sans); font-size: 1.2rem; font-weight: 800; color: var(--text); margin-bottom: 4px; word-break: break-all; }
+  .summary-type { font-family: var(--mono); font-size: 0.7rem; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+
+  .summary-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 20px; border: 1px solid; white-space: nowrap; }
+  .pill-green  { border-color: rgba(0,255,136,0.3); color: var(--green);  background: rgba(0,255,136,0.06); }
+  .pill-yellow { border-color: rgba(255,170,0,0.3); color: var(--yellow); background: rgba(255,170,0,0.06); }
+  .pill-red    { border-color: rgba(255,77,109,0.3); color: var(--red);   background: rgba(255,77,109,0.06); }
+  .pill-cyan   { border-color: rgba(0,207,255,0.3); color: var(--cyan);   background: rgba(0,207,255,0.06); }
+  .pill-purple { border-color: var(--accent-border); color: var(--accent); background: var(--accent-dim); }
+
+  .summary-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .action-sm { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 1px; padding: 8px 14px; border-radius: 8px; cursor: pointer; transition: all 0.15s; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); }
+  .action-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Section card */
+  .section-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+  }
+
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 22px; cursor: pointer; user-select: none;
+    transition: background 0.15s;
+  }
+  .section-header:hover { background: var(--surface2); }
+
+  .section-title-wrap { display: flex; align-items: center; gap: 10px; }
+  .section-icon { font-size: 1.1rem; }
+  .section-title { font-family: var(--sans); font-size: 0.9rem; font-weight: 700; color: var(--text); }
+  .section-count { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); letter-spacing: 1px; }
+
+  .section-chevron { font-size: 0.7rem; color: var(--muted); transition: transform 0.2s; }
+  .section-card.open .section-chevron { transform: rotate(180deg); }
+
+  .section-body { display: none; border-top: 1px solid var(--border); }
+  .section-card.open .section-body { display: block; }
+
+  /* Metadata table */
+  .meta-table { width: 100%; border-collapse: collapse; }
+  .meta-row { display: flex; border-bottom: 1px solid rgba(42,42,64,0.5); }
+  .meta-row:last-child { border-bottom: none; }
+  .meta-row:hover { background: var(--surface2); }
+
+  .meta-key {
+    font-family: var(--mono); font-size: 0.68rem; color: var(--muted);
+    letter-spacing: 0.5px; padding: 10px 16px 10px 22px;
+    width: 38%; flex-shrink: 0; word-break: break-word;
+    display: flex; align-items: flex-start;
+  }
+
+  .meta-val {
+    font-family: var(--mono); font-size: 0.72rem; color: var(--text);
+    padding: 10px 16px; flex: 1; word-break: break-all; line-height: 1.5;
+  }
+
+  .meta-val.highlight { color: var(--cyan); }
+  .meta-val.warn      { color: var(--yellow); }
+  .meta-val.danger    { color: var(--red); }
+  .meta-val.good      { color: var(--green); }
+  .meta-val.accent    { color: var(--accent); }
+
+  /* GPS map link */
+  .gps-link { color: var(--cyan); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .gps-link:hover { text-decoration: underline; }
+
+  /* Anomaly badge */
+  .anomaly-badge {
+    display: inline-block; font-family: var(--mono); font-size: 0.58rem;
+    letter-spacing: 1px; padding: 2px 6px; border-radius: 4px;
+    background: rgba(255,77,109,0.15); border: 1px solid rgba(255,77,109,0.3);
+    color: var(--red); margin-left: 6px; vertical-align: middle;
+  }
+
+  /* Thumbnail */
+  .thumb-wrap { padding: 20px 22px; }
+  .thumb-wrap img { max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid var(--border); }
+
+  /* Empty state */
+  .empty-section { padding: 20px 22px; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+
+  /* Copy toast */
+  .toast {
+    position: fixed; bottom: 30px; right: 30px;
+    background: var(--surface); border: 1px solid var(--accent-border);
+    border-radius: 10px; padding: 12px 18px;
+    font-family: var(--mono); font-size: 0.72rem; color: var(--accent);
+    z-index: 100; opacity: 0; transform: translateY(10px);
+    transition: all 0.25s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  @media (max-width: 600px) {
+    .summary-card { flex-direction: column; }
+    .meta-key { width: 45%; font-size: 0.62rem; }
+    .meta-val { font-size: 0.68rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <a href="index.html" class="back-link">← N3m35i's Tools</a>
+    <div class="logo-wrap">
+      <div class="logo-icon">🔍</div>
+      <h1>Deep<span>Scan</span></h1>
+    </div>
+    <p class="subtitle">Metadati · EXIF · GPS · Anomalie · Tutto ciò che c'è dentro</p>
+  </header>
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" onchange="onFileSelected(this)">
+    <span class="drop-icon">🔍</span>
+    <div class="drop-text">
+      <strong>Trascina qualsiasi file qui</strong>
+      DeepScan estrae tutti i metadati disponibili
+    </div>
+    <div class="drop-formats">
+      <span class="fmt-tag">JPG</span><span class="fmt-tag">PNG</span><span class="fmt-tag">TIFF</span>
+      <span class="fmt-tag">WEBP</span><span class="fmt-tag">PDF</span><span class="fmt-tag">MP4</span>
+      <span class="fmt-tag">MOV</span><span class="fmt-tag">MP3</span><span class="fmt-tag">WAV</span>
+      <span class="fmt-tag">DOCX</span><span class="fmt-tag">XLSX</span><span class="fmt-tag">*.*</span>
+    </div>
+  </div>
+
+  <!-- Scanning -->
+  <div class="scanning-bar" id="scanningBar">
+    <span class="spin">⏳</span>
+    <span id="scanningText">Scansione in corso…</span>
+  </div>
+
+  <!-- Results -->
+  <div id="results"></div>
+
+</div>
+
+<div class="toast" id="toast">✓ Copiato negli appunti</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  DeepScan — metadata extractor
+// ═══════════════════════════════════════════════════════════════
+
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) { document.getElementById('fileInput').value = ''; processFile(f); }
+});
+
+function onFileSelected(input) {
+  if (input.files && input.files[0]) processFile(input.files[0]);
+}
+
+async function processFile(file) {
+  document.getElementById('results').className = '';
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('scanningBar').classList.add('visible');
+  setScanningText('Lettura file…');
+
+  try {
+    const arrayBuffer = await readFile(file);
+    const bytes = new Uint8Array(arrayBuffer);
+    const ext = file.name.split('.').pop().toLowerCase();
+    const mime = file.type || '';
+
+    setScanningText('Analisi struttura…');
+    await sleep(80);
+
+    const sections = [];
+
+    // ── 1. UNIVERSAL: base info ──────────────────────────────
+    sections.push(buildBaseSection(file, bytes, ext, mime));
+
+    // ── 2. Format-specific parsers ───────────────────────────
+    if (isImage(ext, mime)) {
+      setScanningText('Lettura dati EXIF…');
+      await sleep(60);
+      const exifSections = parseEXIF(bytes, file);
+      sections.push(...exifSections);
+    }
+
+    if (ext === 'pdf') {
+      setScanningText('Scansione struttura PDF…');
+      await sleep(60);
+      sections.push(...parsePDFMeta(bytes));
+    }
+
+    if (['mp3','wav','ogg','flac','aac','m4a','wma'].includes(ext)) {
+      setScanningText('Lettura tag audio…');
+      await sleep(60);
+      sections.push(...parseAudioMeta(bytes, ext));
+    }
+
+    if (['mp4','mov','avi','mkv','m4v','webm'].includes(ext)) {
+      setScanningText('Analisi container video…');
+      await sleep(60);
+      sections.push(...parseVideoMeta(bytes, ext));
+    }
+
+    if (['docx','xlsx','pptx','odt','ods'].includes(ext)) {
+      setScanningText('Estrazione metadati documento…');
+      await sleep(60);
+      const officeSections = await parseOfficeMeta(arrayBuffer, ext);
+      sections.push(...officeSections);
+    }
+
+    // ── 3. Binary anomalies (all files) ─────────────────────
+    setScanningText('Ricerca anomalie…');
+    await sleep(60);
+    sections.push(buildAnomalySection(bytes, ext));
+
+    document.getElementById('scanningBar').classList.remove('visible');
+    renderResults(file, sections, ext);
+
+  } catch(e) {
+    document.getElementById('scanningBar').classList.remove('visible');
+    document.getElementById('results').className = 'visible';
+    document.getElementById('results').innerHTML =
+      `<div style="background:rgba(255,77,109,0.07);border:1px solid rgba(255,77,109,0.2);border-radius:12px;padding:20px;font-family:var(--mono);font-size:0.78rem;color:#ff4d6d;">
+        ❌ Errore durante la scansione: ${e.message}
+      </div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BASE INFO
+// ═══════════════════════════════════════════════════════════════
+function buildBaseSection(file, bytes, ext, mime) {
+  const rows = [];
+
+  rows.push({ k: 'Nome file', v: file.name });
+  rows.push({ k: 'Dimensione', v: formatSize(file.size) + ` (${file.size.toLocaleString()} bytes)` });
+  rows.push({ k: 'Tipo MIME', v: mime || 'sconosciuto', cls: mime ? '' : 'warn' });
+  rows.push({ k: 'Estensione', v: ext ? '.' + ext : 'nessuna' });
+  rows.push({ k: 'Ultima modifica', v: new Date(file.lastModified).toLocaleString('it-IT') });
+
+  // Magic bytes detection
+  const magic = detectMagic(bytes);
+  const magicMatch = magic.ext && magic.ext.includes(ext);
+  rows.push({
+    k: 'Magic bytes',
+    v: magic.desc + (magic.ext ? ` [${magic.ext}]` : ''),
+    cls: magic.ext ? (magicMatch ? 'good' : 'warn') : ''
+  });
+
+  if (magic.ext && !magicMatch && ext) {
+    const correct = magic.ext[0];
+    rows.push({
+      k: '⚠ Estensione fasulla',
+      v: `Il file ha estensione .${ext} ma il contenuto reale è ${magic.desc} → l'estensione corretta dovrebbe essere .${correct}`,
+      cls: 'danger'
+    });
+  }
+
+  // Entropy (randomness — high entropy = compressed/encrypted)
+  const entropy = calcEntropy(bytes.slice(0, Math.min(bytes.length, 8192)));
+  rows.push({
+    k: 'Entropia',
+    v: entropy.toFixed(3) + ' / 8.000 ' + (entropy > 7.5 ? '(alto — compresso o cifrato)' : entropy > 6 ? '(medio)' : '(basso — testo/dati strutturati)'),
+    cls: entropy > 7.5 ? 'warn' : ''
+  });
+
+  // SHA-like fingerprint (first 16 bytes as hex)
+  const fingerprint = Array.from(bytes.slice(0, 16)).map(b => b.toString(16).padStart(2,'0')).join('');
+  rows.push({ k: 'Impronta iniziale', v: fingerprint });
+
+  return { icon: '📋', title: 'Informazioni base', rows, open: true };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  EXIF PARSER (JPG, TIFF, WEBP, PNG)
+// ═══════════════════════════════════════════════════════════════
+function parseEXIF(bytes, file) {
+  const sections = [];
+  const ext = file.name.split('.').pop().toLowerCase();
+
+  // Find EXIF in JPEG
+  let exifOffset = -1;
+  let exifBytes = null;
+
+  if (ext === 'jpg' || ext === 'jpeg') {
+    // JPEG: find APP1 marker (FF E1) with EXIF header
+    for (let i = 0; i < bytes.length - 10; i++) {
+      if (bytes[i] === 0xFF && bytes[i+1] === 0xE1) {
+        const len = (bytes[i+2] << 8) | bytes[i+3];
+        if (bytes[i+4]===0x45&&bytes[i+5]===0x78&&bytes[i+6]===0x69&&bytes[i+7]===0x66) {
+          exifOffset = i + 10; // skip APP1 header + "Exif\0\0"
+          exifBytes = bytes.slice(exifOffset, i + 2 + len);
+          break;
+        }
+      }
+    }
+
+    // Also extract JPEG-specific info
+    const jpegRows = extractJPEGInfo(bytes);
+    if (jpegRows.length) sections.push({ icon: '🖼️', title: 'Immagine JPEG', rows: jpegRows });
+
+    // Check for embedded thumbnail (APP1 segment after first)
+    const thumbRows = findJPEGThumbnail(bytes);
+    if (thumbRows) sections.push(thumbRows);
+
+    // ICC Profile
+    const iccRows = extractICC(bytes);
+    if (iccRows.length) sections.push({ icon: '🎨', title: 'Profilo colore ICC', rows: iccRows });
+
+    // XMP data
+    const xmpRows = extractXMP(bytes);
+    if (xmpRows.length) sections.push({ icon: '📝', title: 'Metadati XMP', rows: xmpRows });
+
+    // IPTC
+    const iptcRows = extractIPTC(bytes);
+    if (iptcRows.length) sections.push({ icon: '📰', title: 'Metadati IPTC', rows: iptcRows });
+  }
+
+  if (ext === 'png') {
+    const pngSections = parsePNG(bytes);
+    sections.push(...pngSections);
+    return sections;
+  }
+
+  if (ext === 'webp') {
+    const webpRows = parseWEBP(bytes);
+    if (webpRows.length) sections.push({ icon: '🖼️', title: 'Struttura WEBP', rows: webpRows });
+  }
+
+  if (!exifBytes && (ext === 'tiff' || ext === 'tif')) {
+    exifOffset = 0;
+    exifBytes = bytes;
+  }
+
+  if (!exifBytes) {
+    sections.push({ icon: '📷', title: 'Dati EXIF', rows: [{ k: 'EXIF', v: 'Nessun dato EXIF trovato nel file', cls: 'warn' }] });
+    return sections;
+  }
+
+  // Parse TIFF/EXIF IFD
+  const parsed = parseTIFF(exifBytes);
+  if (parsed.camera.length)    sections.push({ icon: '📷', title: 'Fotocamera & Obiettivo',  rows: parsed.camera });
+  if (parsed.exposure.length)  sections.push({ icon: '⚙️', title: 'Impostazioni di scatto',  rows: parsed.exposure });
+  if (parsed.datetime.length)  sections.push({ icon: '🕐', title: 'Date & Timestamp',         rows: parsed.datetime });
+  if (parsed.image.length)     sections.push({ icon: '📐', title: 'Dimensioni & Risoluzione', rows: parsed.image });
+  if (parsed.gps.length)       sections.push({ icon: '🌍', title: 'Posizione GPS',             rows: parsed.gps, gps: parsed.gpsCoords });
+  if (parsed.other.length)     sections.push({ icon: '🔧', title: 'Altri tag EXIF',            rows: parsed.other });
+
+  return sections;
+}
+
+function parseTIFF(bytes) {
+  const result = { camera:[], exposure:[], datetime:[], image:[], gps:[], other:[], gpsCoords: null };
+
+  if (bytes.length < 8) return result;
+
+  const littleEndian = bytes[0] === 0x49 && bytes[1] === 0x49;
+  const r16 = (o) => littleEndian ? (bytes[o] | bytes[o+1]<<8) : (bytes[o]<<8 | bytes[o+1]);
+  const r32 = (o) => littleEndian ? (bytes[o]|(bytes[o+1]<<8)|(bytes[o+2]<<16)|(bytes[o+3]<<24))>>>0 : ((bytes[o]<<24)|(bytes[o+1]<<16)|(bytes[o+2]<<8)|bytes[o+3])>>>0;
+
+  const magic = r16(2);
+  if (magic !== 42 && magic !== 43) return result;
+
+  let ifdOffset = r32(4);
+
+  function readStr(off, len) {
+    let s = '';
+    for (let i = 0; i < len && off+i < bytes.length; i++) {
+      if (bytes[off+i] === 0) break;
+      s += String.fromCharCode(bytes[off+i]);
+    }
+    return s.trim();
+  }
+
+  function readRational(off) {
+    const num = r32(off), den = r32(off+4);
+    return den === 0 ? 0 : num / den;
+  }
+
+  function readSRational(off) {
+    const num = (r32(off) | 0), den = (r32(off+4) | 0);
+    return den === 0 ? 0 : num / den;
+  }
+
+  function readValue(type, count, valOffset, dataOffset) {
+    if (type === 2) return readStr(dataOffset, count);
+    if (type === 3) return count === 1 ? r16(dataOffset) : r16(dataOffset);
+    if (type === 4) return r32(dataOffset);
+    if (type === 5) return readRational(dataOffset);
+    if (type === 10) return readSRational(dataOffset);
+    return null;
+  }
+
+  function processIFD(offset, isGPS = false) {
+    if (offset + 2 > bytes.length) return;
+    const count = r16(offset);
+    for (let i = 0; i < count; i++) {
+      const base = offset + 2 + i * 12;
+      if (base + 12 > bytes.length) break;
+      const tag = r16(base);
+      const type = r16(base+2);
+      const cnt  = r32(base+4);
+      const typeSize = [0,1,1,2,4,8,1,1,2,4,8,4,8][type] || 1;
+      const dataSize = typeSize * cnt;
+      const dataOff  = dataSize <= 4 ? base+8 : r32(base+8);
+
+      const val = readValue(type, cnt, dataOff < base+8 ? base+8 : dataOff, dataSize <= 4 ? base+8 : dataOff);
+      if (val === null || val === undefined) continue;
+
+      if (isGPS) {
+        processGPSTag(tag, type, cnt, dataSize <= 4 ? base+8 : dataOff, val);
+      } else {
+        processEXIFTag(tag, type, cnt, dataSize <= 4 ? base+8 : dataOff, val, dataOff);
+      }
+    }
+  }
+
+  let gpsLat = null, gpsLon = null, gpsLatRef = 'N', gpsLonRef = 'E', gpsAlt = null;
+  let gpsIFDOffset = null, exifIFDOffset = null;
+
+  function processGPSTag(tag, type, cnt, off, val) {
+    const GPS_TAGS = {
+      1: 'Lat Ref', 2: 'Lat', 3: 'Lon Ref', 4: 'Lon',
+      5: 'Alt Ref', 6: 'Alt', 7: 'Ora GPS', 12: 'Velocità Unità',
+      13: 'Velocità', 16: 'Direzione Rif', 17: 'Direzione',
+      27: 'Metodo Misura', 29: 'Data GPS', 31: 'Precisione H'
+    };
+
+    if (tag === 1) { gpsLatRef = readStr(off, cnt); return; }
+    if (tag === 3) { gpsLonRef = readStr(off, cnt); return; }
+    if (tag === 2 && type === 5) {
+      const d = readRational(off), m = readRational(off+8), s = readRational(off+16);
+      gpsLat = d + m/60 + s/3600;
+      result.gps.push({ k: 'Latitudine', v: `${d}° ${m}' ${s.toFixed(4)}" ${gpsLatRef}` });
+      return;
+    }
+    if (tag === 4 && type === 5) {
+      const d = readRational(off), m = readRational(off+8), s = readRational(off+16);
+      gpsLon = d + m/60 + s/3600;
+      result.gps.push({ k: 'Longitudine', v: `${d}° ${m}' ${s.toFixed(4)}" ${gpsLonRef}` });
+      return;
+    }
+    if (tag === 6 && type === 5) {
+      gpsAlt = readRational(off);
+      result.gps.push({ k: 'Altitudine', v: gpsAlt.toFixed(1) + ' m' });
+      return;
+    }
+    if (tag === 29) { result.gps.push({ k: 'Data GPS', v: readStr(off, cnt) }); return; }
+    if (tag === 7 && type === 5) {
+      const h = readRational(off), m2 = readRational(off+8), s2 = readRational(off+16);
+      result.gps.push({ k: 'Ora GPS (UTC)', v: `${String(Math.floor(h)).padStart(2,'0')}:${String(Math.floor(m2)).padStart(2,'0')}:${s2.toFixed(0).padStart(2,'0')}` });
+      return;
+    }
+    const label = GPS_TAGS[tag] || `GPS Tag ${tag}`;
+    result.gps.push({ k: label, v: String(val) });
+  }
+
+  function processEXIFTag(tag, type, cnt, off, val, dataOff) {
+    const CAMERA_TAGS = { 271:'Make', 272:'Model', 305:'Software', 315:'Artist', 33434:'Tempo di esposizione', 33437:'Apertura (F-Number)', 34855:'ISO', 36867:'Data scatto', 36868:'Data originale', 37380:'Compensazione esposizione', 37381:'Valore massimo apertura', 37383:'Modo misurazione', 37384:'Sorgente luce', 37385:'Flash', 37386:'Focale', 41486:'Risoluzione focale X', 41487:'Risoluzione focale Y', 41989:'Focale equivalente 35mm', 41990:'Modalità scena', 40961:'Color Space', 40962:'Larghezza', 40963:'Altezza' };
+    const EXPOSURE_TAGS = { 41985:'Modalità custom', 41986:'Modo esposizione', 41987:'Bilanciamento bianco', 41988:'Fattore zoom digitale', 41992:'Contrasto', 41993:'Saturazione', 41994:'Nitidezza', 37121:'Componenti', 37122:'Bytes compressi/pixel', 37377:'APEX Shutter', 37378:'APEX Apertura', 37379:'APEX Luminosità', 37382:'Distanza soggetto', 34850:'Programma esposizione', 34852:'Spettro sensibilità' };
+    const IMAGE_TAGS = { 256:'Larghezza img', 257:'Altezza img', 258:'Bit per campione', 259:'Compressione', 262:'Interpretazione fotometrica', 274:'Orientamento', 282:'Risoluzione X', 283:'Risoluzione Y', 296:'Unità risoluzione', 531:'YCbCrPositioning' };
+    const DATETIME_TAGS = { 306:'Data e ora', 36867:'Data scatto originale', 36868:'Data creazione digitale', 50971:'Data profilo ICC' };
+
+    if (tag === 34853) { gpsIFDOffset = r32(off); return; }
+    if (tag === 34665) { exifIFDOffset = r32(off); return; }
+
+    let strVal = formatTagValue(tag, type, cnt, off, val);
+    if (!strVal) return;
+
+    if (CAMERA_TAGS[tag])   { result.camera.push({ k: CAMERA_TAGS[tag], v: strVal }); return; }
+    if (EXPOSURE_TAGS[tag]) { result.exposure.push({ k: EXPOSURE_TAGS[tag], v: strVal }); return; }
+    if (IMAGE_TAGS[tag])    { result.image.push({ k: IMAGE_TAGS[tag], v: strVal }); return; }
+    if (DATETIME_TAGS[tag]) { result.datetime.push({ k: DATETIME_TAGS[tag], v: strVal }); return; }
+    result.other.push({ k: `Tag 0x${tag.toString(16).toUpperCase()}`, v: strVal });
+  }
+
+  function formatTagValue(tag, type, cnt, off, val) {
+    if (tag === 33434 && type === 5) {
+      const n = r32(off), d = r32(off+4);
+      return d === 0 ? `${n}s` : (n >= d ? `${(n/d).toFixed(0)}s` : `1/${Math.round(d/n)}s`);
+    }
+    if (tag === 33437 && type === 5) return `f/${readRational(off).toFixed(1)}`;
+    if (tag === 37386 && type === 5) return `${readRational(off).toFixed(0)} mm`;
+    if (tag === 41989) return `${val} mm`;
+    if (tag === 37383) return ['Sconosciuto','Media','Centro-pesata','Spot','Multi-zona'][val] || val;
+    if (tag === 37385) return val === 0 ? 'Nessun flash' : `Flash: ${val}`;
+    if (tag === 274) return ['','Normale','Speculare H','Ruotata 180°','Speculare V','Speculare H+Ruotata 270°','Ruotata 90°','Speculare H+Ruotata 90°','Ruotata 270°'][val] || val;
+    if (tag === 40961) return val === 1 ? 'sRGB' : val === 65535 ? 'Non calibrato' : `${val}`;
+    if (type === 2) return typeof val === 'string' ? val : readStr(off, cnt);
+    if (type === 5 || type === 10) return readRational(off).toFixed(4);
+    return String(val);
+  }
+
+  processIFD(ifdOffset);
+  if (exifIFDOffset) processIFD(exifIFDOffset);
+  if (gpsIFDOffset)  processIFD(gpsIFDOffset, true);
+
+  // Compute GPS coords
+  if (gpsLat !== null && gpsLon !== null) {
+    const lat = gpsLatRef === 'S' ? -gpsLat : gpsLat;
+    const lon = gpsLonRef === 'W' ? -gpsLon : gpsLon;
+    result.gpsCoords = { lat, lon };
+    result.gps.push({ k: 'Coordinate decimali', v: `${lat.toFixed(6)}, ${lon.toFixed(6)}`, cls: 'highlight', gps: true });
+    result.gps.push({ k: 'Google Maps', v: `maps.google.com/?q=${lat},${lon}`, link: `https://maps.google.com/?q=${lat},${lon}` });
+  }
+
+  return result;
+}
+
+function extractJPEGInfo(bytes) {
+  const rows = [];
+  let i = 0;
+  if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return rows;
+  rows.push({ k: 'Formato', v: 'JPEG (Joint Photographic Experts Group)' });
+
+  i = 2;
+  while (i < bytes.length - 4) {
+    if (bytes[i] !== 0xFF) break;
+    const marker = bytes[i+1];
+    const len = (bytes[i+2] << 8) | bytes[i+3];
+    if (marker === 0xC0 || marker === 0xC2) {
+      const precision = bytes[i+4];
+      const height = (bytes[i+5] << 8) | bytes[i+6];
+      const width  = (bytes[i+7] << 8) | bytes[i+8];
+      const components = bytes[i+9];
+      rows.push({ k: 'Dimensioni', v: `${width} × ${height} px` });
+      rows.push({ k: 'Precisione colore', v: `${precision} bit` });
+      rows.push({ k: 'Componenti colore', v: components === 1 ? 'Grayscale' : components === 3 ? 'YCbCr (colore)' : components === 4 ? 'CMYK' : `${components}` });
+      rows.push({ k: 'Compressione', v: marker === 0xC0 ? 'Baseline DCT' : 'Progressive DCT' });
+      break;
+    }
+    if (len < 2) break;
+    i += 2 + len;
+  }
+  return rows;
+}
+
+function findJPEGThumbnail(bytes) {
+  // Look for second EXIF APP1 or APP0 JFIF thumbnail
+  let count = 0;
+  for (let i = 0; i < bytes.length - 10; i++) {
+    if (bytes[i] === 0xFF && (bytes[i+1] === 0xE0 || bytes[i+1] === 0xE1)) {
+      count++;
+      if (count > 1) {
+        const len = (bytes[i+2] << 8) | bytes[i+3];
+        return {
+          icon: '🖼️', title: 'Thumbnail incorporata',
+          rows: [
+            { k: 'Posizione', v: `Offset ${i} (byte)` },
+            { k: 'Dimensione', v: formatSize(len) },
+            { k: 'Nota', v: 'Il file contiene un\'immagine in miniatura nei metadati', cls: 'warn' }
+          ]
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function extractICC(bytes) {
+  const rows = [];
+  // Find APP2 ICC marker (FF E2)
+  for (let i = 0; i < bytes.length - 20; i++) {
+    if (bytes[i] === 0xFF && bytes[i+1] === 0xE2) {
+      const header = String.fromCharCode(...bytes.slice(i+4, i+16));
+      if (header.startsWith('ICC_PROFILE')) {
+        const len = (bytes[i+2] << 8) | bytes[i+3];
+        // Parse ICC header at offset i+16
+        const iccStart = i + 16;
+        if (iccStart + 128 > bytes.length) break;
+        const colorSpace = String.fromCharCode(...bytes.slice(iccStart+16, iccStart+20)).trim();
+        const renderIntent = bytes[iccStart+67];
+        const cmm = String.fromCharCode(...bytes.slice(iccStart+4, iccStart+8)).trim();
+        rows.push({ k: 'Spazio colore', v: colorSpace });
+        rows.push({ k: 'Rendering intent', v: ['Percettuale','Saturazione relativa','Saturazione','Assoluta'][renderIntent] || renderIntent });
+        rows.push({ k: 'CMM', v: cmm || 'Non specificato' });
+        rows.push({ k: 'Dimensione profilo', v: formatSize(len) });
+        break;
+      }
+    }
+  }
+  return rows;
+}
+
+function extractXMP(bytes) {
+  const rows = [];
+  const raw = uint8ToStr(bytes);
+  const xmpStart = raw.indexOf('<?xpacket');
+  if (xmpStart === -1) return rows;
+  const xmpEnd = raw.indexOf('<?xpacket end', xmpStart);
+  if (xmpEnd === -1) return rows;
+  const xmp = raw.slice(xmpStart, xmpEnd + 30);
+
+  const extract = (tag) => {
+    const re = new RegExp(`<[^:]+:${tag}[^>]*>([^<]+)<`, 'i');
+    const m = re.exec(xmp);
+    return m ? m[1].trim() : null;
+  };
+
+  const fields = ['Creator','Rights','Description','Title','Subject','Rating','Label',
+                  'CreateDate','ModifyDate','MetadataDate','CreatorTool','Format',
+                  'ColorMode','ICCProfileName','DocumentID','OriginalDocumentID'];
+
+  for (const f of fields) {
+    const v = extract(f);
+    if (v) rows.push({ k: f, v });
+  }
+
+  rows.push({ k: 'Dimensione XMP', v: formatSize(xmpEnd - xmpStart) });
+  return rows;
+}
+
+function extractIPTC(bytes) {
+  const rows = [];
+  for (let i = 0; i < bytes.length - 5; i++) {
+    if (bytes[i] === 0xFF && bytes[i+1] === 0xED) {
+      const len = (bytes[i+2] << 8) | bytes[i+3];
+      const seg = bytes.slice(i+4, i+4+len);
+      const header = String.fromCharCode(...seg.slice(0, 14));
+      if (!header.includes('Photoshop')) continue;
+
+      let j = 14;
+      while (j < seg.length - 7) {
+        if (seg[j] !== 0x38 || seg[j+1] !== 0x42 || seg[j+2] !== 0x49 || seg[j+3] !== 0x4D) { j++; continue; }
+        const resourceId = (seg[j+4] << 8) | seg[j+5];
+        const nameLen = seg[j+6] + (seg[j+6] % 2 === 0 ? 2 : 1);
+        const dataLen = (seg[j+6+nameLen] << 24) | (seg[j+7+nameLen] << 16) | (seg[j+8+nameLen] << 8) | seg[j+9+nameLen];
+        const data = seg.slice(j+10+nameLen, j+10+nameLen+dataLen);
+
+        const IPTC_IDS = { 1028:'Categoria', 1040:'Keyword', 1055:'Titolo', 1085:'Autore', 1092:'Credito', 1116:'Fonte', 1122:'Copyright', 1129:'Oggetto' };
+        if (IPTC_IDS[resourceId]) {
+          rows.push({ k: IPTC_IDS[resourceId], v: String.fromCharCode(...data).trim() });
+        }
+        j += 10 + nameLen + dataLen + (dataLen % 2);
+      }
+      break;
+    }
+  }
+  return rows;
+}
+
+// ── PNG parser ───────────────────────────────────────────────────
+function parsePNG(bytes) {
+  const sections = [];
+  if (bytes[0] !== 0x89 || bytes[1] !== 0x50) return sections;
+
+  const rows = [{ k: 'Formato', v: 'PNG (Portable Network Graphics)' }];
+  const textRows = [];
+  const otherRows = [];
+  let i = 8;
+
+  while (i < bytes.length - 12) {
+    const len  = (bytes[i]<<24|bytes[i+1]<<16|bytes[i+2]<<8|bytes[i+3])>>>0;
+    const type = String.fromCharCode(bytes[i+4],bytes[i+5],bytes[i+6],bytes[i+7]);
+    const data = bytes.slice(i+8, i+8+len);
+
+    if (type === 'IHDR') {
+      const w = (data[0]<<24|data[1]<<16|data[2]<<8|data[3])>>>0;
+      const h = (data[4]<<24|data[5]<<16|data[6]<<8|data[7])>>>0;
+      const bit = data[8];
+      const colorTypes = ['Grayscale','','RGB','Indexed','Grayscale+Alpha','','RGBA'];
+      rows.push({ k: 'Dimensioni', v: `${w} × ${h} px` });
+      rows.push({ k: 'Bit depth', v: `${bit} bit` });
+      rows.push({ k: 'Tipo colore', v: colorTypes[data[9]] || data[9] });
+      rows.push({ k: 'Compressione', v: 'Deflate (zlib)' });
+      rows.push({ k: 'Interlacciato', v: data[12] === 1 ? 'Sì (Adam7)' : 'No' });
+    }
+    else if (type === 'tEXt' || type === 'zTXt' || type === 'iTXt') {
+      const nullIdx = data.indexOf(0);
+      if (nullIdx > 0) {
+        const key = String.fromCharCode(...data.slice(0, nullIdx));
+        const val = type === 'tEXt' ? String.fromCharCode(...data.slice(nullIdx+1)) : '[compresso]';
+        textRows.push({ k: key, v: val.trim() });
+      }
+    }
+    else if (type === 'pHYs') {
+      const xppu = (data[0]<<24|data[1]<<16|data[2]<<8|data[3])>>>0;
+      const yppu = (data[4]<<24|data[5]<<16|data[6]<<8|data[7])>>>0;
+      const unit = data[8] === 1 ? 'pixel/metro' : 'proporzione';
+      if (data[8] === 1) {
+        rows.push({ k: 'Risoluzione X', v: `${Math.round(xppu/39.37)} DPI` });
+        rows.push({ k: 'Risoluzione Y', v: `${Math.round(yppu/39.37)} DPI` });
+      } else {
+        rows.push({ k: 'Proporzione pixel', v: `${xppu}:${yppu}` });
+      }
+    }
+    else if (type === 'gAMA') {
+      const gamma = ((data[0]<<24|data[1]<<16|data[2]<<8|data[3])>>>0) / 100000;
+      rows.push({ k: 'Gamma', v: gamma.toFixed(5) });
+    }
+    else if (type === 'cHRM') {
+      otherRows.push({ k: 'Cromaticità bianco', v: `x=${((data[0]<<24|data[1]<<16|data[2]<<8|data[3])>>>0)/100000} y=${((data[4]<<24|data[5]<<16|data[6]<<8|data[7])>>>0)/100000}` });
+    }
+    else if (type === 'tIME') {
+      const year = (data[0]<<8)|data[1];
+      rows.push({ k: 'Ultima modifica (PNG)', v: `${year}-${String(data[2]).padStart(2,'0')}-${String(data[3]).padStart(2,'0')} ${String(data[4]).padStart(2,'0')}:${String(data[5]).padStart(2,'0')}:${String(data[6]).padStart(2,'0')}` });
+    }
+
+    i += 12 + len;
+  }
+
+  sections.push({ icon: '🖼️', title: 'Immagine PNG', rows });
+  if (textRows.length) sections.push({ icon: '📝', title: 'Metadati testuali PNG', rows: textRows });
+  return sections;
+}
+
+function parseWEBP(bytes) {
+  const rows = [];
+  if (String.fromCharCode(...bytes.slice(0,4)) !== 'RIFF') return rows;
+  if (String.fromCharCode(...bytes.slice(8,12)) !== 'WEBP') return rows;
+  rows.push({ k: 'Formato', v: 'WEBP' });
+  const subFormat = String.fromCharCode(...bytes.slice(12,16));
+  rows.push({ k: 'Sottotipo', v: subFormat === 'VP8 ' ? 'Lossy (VP8)' : subFormat === 'VP8L' ? 'Lossless' : subFormat === 'VP8X' ? 'Extended' : subFormat });
+  if (subFormat === 'VP8X' && bytes.length > 30) {
+    const w = ((bytes[24]|(bytes[25]<<8)|(bytes[26]<<16))>>>0) + 1;
+    const h = ((bytes[27]|(bytes[28]<<8)|(bytes[29]<<16))>>>0) + 1;
+    rows.push({ k: 'Dimensioni', v: `${w} × ${h} px` });
+  }
+  return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PDF METADATA
+// ═══════════════════════════════════════════════════════════════
+function parsePDFMeta(bytes) {
+  const sections = [];
+  const raw = uint8ToStr(bytes);
+  const rows = [];
+
+  const vMatch = raw.match(/%PDF-(\d+\.\d+)/);
+  if (vMatch) rows.push({ k: 'Versione PDF', v: vMatch[1] });
+
+  // Extract Info dict
+  const infoMatch = raw.match(/\/Info\s+(\d+)\s+(\d+)\s+R/);
+  if (infoMatch) {
+    const objNum = infoMatch[1];
+    const objMatch = new RegExp(`${objNum}\\s+\\d+\\s+obj\\s*<<([\\s\\S]*?)>>`).exec(raw);
+    if (objMatch) {
+      const dict = objMatch[1];
+      const fields = ['Title','Author','Subject','Keywords','Creator','Producer','CreationDate','ModDate'];
+      for (const f of fields) {
+        const m = new RegExp(`/${f}\\s*\\(([^)]+)\\)`).exec(dict);
+        if (m) rows.push({ k: f, v: decodePDFString(m[1]) });
+      }
+    }
+  }
+
+  // XMP in PDF
+  const xmpIdx = raw.indexOf('<?xpacket');
+  if (xmpIdx !== -1) {
+    rows.push({ k: 'XMP', v: 'Presente (metadati XMP incorporati)', cls: 'highlight' });
+  }
+
+  // Encryption
+  const hasEncrypt = /\/Encrypt\s+\d+/.test(raw);
+  rows.push({ k: 'Protezioni', v: hasEncrypt ? 'Presenti (file cifrato/protetto)' : 'Nessuna', cls: hasEncrypt ? 'warn' : 'good' });
+
+  // Count pages (approximate)
+  const pageMatches = raw.match(/\/Type\s*\/Page[^s]/g);
+  if (pageMatches) rows.push({ k: 'Pagine (approx.)', v: pageMatches.length });
+
+  // Check for JavaScript
+  const hasJS = /\/JavaScript\s/i.test(raw) || /\/JS\s/i.test(raw);
+  if (hasJS) rows.push({ k: '⚠ JavaScript', v: 'Il PDF contiene JavaScript incorporato', cls: 'danger' });
+
+  // Check for embedded files
+  const hasEmbedded = /\/EmbeddedFile/.test(raw);
+  if (hasEmbedded) rows.push({ k: '⚠ File incorporati', v: 'Il PDF contiene file allegati', cls: 'warn' });
+
+  // Check for forms
+  const hasForms = /\/AcroForm/.test(raw);
+  if (hasForms) rows.push({ k: 'Moduli AcroForm', v: 'Presenti', cls: 'highlight' });
+
+  // PDF structure
+  rows.push({ k: 'Struttura xref', v: /\bxref\b/.test(raw) ? 'Classica (tabella xref)' : 'Moderna (xref streams)' });
+
+  sections.push({ icon: '📄', title: 'Metadati PDF', rows, open: true });
+  return sections;
+}
+
+function decodePDFString(s) {
+  return s.replace(/\\n/g,'\n').replace(/\\r/g,'\r').replace(/\\t/g,'\t').replace(/\\\\/g,'\\').replace(/\\([0-7]{3})/g, (m,o) => String.fromCharCode(parseInt(o,8)));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AUDIO METADATA (ID3v2, ID3v1, FLAC, WAV)
+// ═══════════════════════════════════════════════════════════════
+function parseAudioMeta(bytes, ext) {
+  const sections = [];
+  const rows = [];
+
+  if (ext === 'mp3') {
+    // ID3v2
+    if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+      rows.push({ k: 'Formato', v: 'MP3 con tag ID3v2' });
+      const majorVer = bytes[3];
+      rows.push({ k: 'Versione ID3', v: `2.${majorVer}` });
+      const tagSize = ((bytes[6]&0x7F)<<21)|((bytes[7]&0x7F)<<14)|((bytes[8]&0x7F)<<7)|(bytes[9]&0x7F);
+      rows.push({ k: 'Dimensione tag ID3', v: formatSize(tagSize) });
+
+      let i = 10;
+      const end = Math.min(tagSize + 10, bytes.length);
+      const ID3_FRAMES = { TIT2:'Titolo', TPE1:'Artista', TALB:'Album', TRCK:'Traccia', TYER:'Anno', TCON:'Genere', TCOM:'Compositore', TPUB:'Etichetta', TCOP:'Copyright', COMM:'Commento', TENC:'Codificato da', TSSE:'Impostazioni encoder', TLEN:'Durata (ms)', TBPM:'BPM', TKEY:'Chiave', USLT:'Testo canzone', APIC:'Copertina incorporata', PRIV:'Dati privati', WXXX:'URL' };
+      while (i < end - 10) {
+        const frameId = String.fromCharCode(bytes[i],bytes[i+1],bytes[i+2],bytes[i+3]);
+        const frameSize = majorVer >= 4
+          ? ((bytes[i+4]&0x7F)<<21)|((bytes[i+5]&0x7F)<<14)|((bytes[i+6]&0x7F)<<7)|(bytes[i+7]&0x7F)
+          : (bytes[i+4]<<24)|(bytes[i+5]<<16)|(bytes[i+6]<<8)|bytes[i+7];
+        if (frameSize <= 0 || frameId[0] < 'A' || frameId[0] > 'Z') break;
+
+        if (frameId === 'APIC') {
+          rows.push({ k: 'Copertina', v: 'Presente (artwork incorporato)', cls: 'highlight' });
+        } else if (ID3_FRAMES[frameId] && frameId[0] === 'T') {
+          const enc = bytes[i+10];
+          let val;
+          if (enc === 0 || enc === 3) val = String.fromCharCode(...bytes.slice(i+11, i+10+frameSize)).replace(/\0/g,'').trim();
+          else val = new TextDecoder('utf-16').decode(bytes.slice(i+11, i+10+frameSize)).replace(/\0/g,'').trim();
+          if (val) rows.push({ k: ID3_FRAMES[frameId], v: val });
+        } else if (frameId === 'PRIV') {
+          rows.push({ k: 'Dati privati', v: `Frame PRIV: ${formatSize(frameSize)}`, cls: 'warn' });
+        }
+        i += 10 + frameSize;
+      }
+    }
+
+    // ID3v1 (last 128 bytes)
+    if (bytes.length >= 128) {
+      const tail = bytes.slice(bytes.length - 128);
+      if (tail[0] === 0x54 && tail[1] === 0x41 && tail[2] === 0x47) {
+        rows.push({ k: 'Tag ID3v1', v: 'Presente' });
+        const readStr = (s, e) => String.fromCharCode(...tail.slice(s,e)).replace(/\0/g,'').trim();
+        const v1title = readStr(3, 33);
+        const v1artist = readStr(33, 63);
+        const v1album = readStr(63, 93);
+        const v1year = readStr(93, 97);
+        if (v1title)  rows.push({ k: 'Titolo (v1)', v: v1title });
+        if (v1artist) rows.push({ k: 'Artista (v1)', v: v1artist });
+        if (v1album)  rows.push({ k: 'Album (v1)', v: v1album });
+        if (v1year)   rows.push({ k: 'Anno (v1)', v: v1year });
+      }
+    }
+
+    // Detect MP3 bitrate from frame header
+    for (let i = 0; i < bytes.length - 4; i++) {
+      if (bytes[i] === 0xFF && (bytes[i+1] & 0xE0) === 0xE0) {
+        const bitrateIdx = (bytes[i+2] >> 4) & 0xF;
+        const bitrates = [0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0];
+        const sampleIdx = (bytes[i+2] >> 2) & 0x3;
+        const sampleRates = [44100,48000,32000,0];
+        if (bitrates[bitrateIdx]) rows.push({ k: 'Bitrate', v: `${bitrates[bitrateIdx]} kbps` });
+        if (sampleRates[sampleIdx]) rows.push({ k: 'Sample rate', v: `${sampleRates[sampleIdx]} Hz` });
+        const stereo = (bytes[i+3] >> 6) === 3 ? 'Mono' : 'Stereo/Joint stereo';
+        rows.push({ k: 'Canali', v: stereo });
+        break;
+      }
+    }
+  }
+
+  if (ext === 'wav') {
+    rows.push({ k: 'Formato', v: 'WAV (RIFF)' });
+    if (bytes.length > 44) {
+      const sampleRate = bytes[24]|(bytes[25]<<8)|(bytes[26]<<16)|(bytes[27]<<24);
+      const channels = bytes[22]|(bytes[23]<<8);
+      const bitsPerSample = bytes[34]|(bytes[35]<<8);
+      rows.push({ k: 'Sample rate', v: `${sampleRate} Hz` });
+      rows.push({ k: 'Canali', v: channels === 1 ? 'Mono' : channels === 2 ? 'Stereo' : `${channels}` });
+      rows.push({ k: 'Bit depth', v: `${bitsPerSample} bit` });
+      const byteRate = bytes[28]|(bytes[29]<<8)|(bytes[30]<<16)|(bytes[31]<<24);
+      rows.push({ k: 'Byte rate', v: `${byteRate} B/s (${Math.round(byteRate*8/1000)} kbps)` });
+    }
+  }
+
+  if (ext === 'flac') {
+    if (bytes[0]===0x66&&bytes[1]===0x4C&&bytes[2]===0x61&&bytes[3]===0x43) {
+      rows.push({ k: 'Formato', v: 'FLAC (Free Lossless Audio Codec)' });
+      // STREAMINFO block
+      if (bytes.length > 26) {
+        const sampleRate = ((bytes[14]<<12)|(bytes[15]<<4)|(bytes[16]>>4)) & 0xFFFFF;
+        const channels = ((bytes[16]>>1)&0x7)+1;
+        const bps = (((bytes[16]&1)<<4)|(bytes[17]>>4))+1;
+        rows.push({ k: 'Sample rate', v: `${sampleRate} Hz` });
+        rows.push({ k: 'Canali', v: channels });
+        rows.push({ k: 'Bit depth', v: `${bps} bit` });
+      }
+    }
+  }
+
+  if (rows.length) sections.push({ icon: '🎵', title: 'Metadati Audio', rows, open: true });
+  return sections;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VIDEO METADATA (MP4/MOV/M4V atoms, MKV EBML)
+// ═══════════════════════════════════════════════════════════════
+function parseVideoMeta(bytes, ext) {
+  const sections = [];
+  const rows = [];
+
+  if (['mp4','mov','m4v','m4a'].includes(ext)) {
+    rows.push({ k: 'Container', v: 'MPEG-4 / ISO Base Media' });
+    // Parse top-level atoms/boxes
+    let i = 0;
+    const atoms = [];
+    while (i < bytes.length - 8 && atoms.length < 50) {
+      const size = (bytes[i]<<24|bytes[i+1]<<16|bytes[i+2]<<8|bytes[i+3])>>>0;
+      const type = String.fromCharCode(bytes[i+4],bytes[i+5],bytes[i+6],bytes[i+7]);
+      if (size < 8 || size > bytes.length) break;
+      atoms.push({ type, size, offset: i });
+
+      if (type === 'ftyp') {
+        const brand = String.fromCharCode(bytes[i+8],bytes[i+9],bytes[i+10],bytes[i+11]);
+        rows.push({ k: 'Brand', v: brand.trim() });
+        const compat = [];
+        for (let j = i+16; j < i+size && j+4 <= bytes.length; j+=4) {
+          const c = String.fromCharCode(bytes[j],bytes[j+1],bytes[j+2],bytes[j+3]).trim();
+          if (c) compat.push(c);
+        }
+        if (compat.length) rows.push({ k: 'Compatibilità', v: compat.join(', ') });
+      }
+      if (type === 'moov') {
+        rows.push({ k: 'Atom moov', v: `Presente (offset ${i}, ${formatSize(size)})` });
+        parseMoov(bytes.slice(i+8, i+size), rows);
+      }
+      i += size;
+    }
+    rows.push({ k: 'Atoms trovati', v: atoms.map(a=>a.type).join(', ') });
+  }
+
+  if (ext === 'mkv' || ext === 'webm') {
+    if (bytes[0]===0x1A&&bytes[1]===0x45&&bytes[2]===0xDF&&bytes[3]===0xA3) {
+      rows.push({ k: 'Container', v: ext === 'webm' ? 'WebM (EBML)' : 'Matroska MKV (EBML)' });
+      // Parse basic EBML header
+      rows.push({ k: 'Formato', v: 'EBML (Extensible Binary Meta Language)' });
+    }
+  }
+
+  if (ext === 'avi') {
+    if (String.fromCharCode(...bytes.slice(0,4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8,12)) === 'AVI ') {
+      rows.push({ k: 'Formato', v: 'AVI (Audio Video Interleave)' });
+      // Read avih chunk
+      const idx = findChunk(bytes, 'avih');
+      if (idx !== -1) {
+        const fps = 1000000 / ((bytes[idx]|(bytes[idx+1]<<8)|(bytes[idx+2]<<16)|(bytes[idx+3]<<24))>>>0);
+        const w = (bytes[idx+32]|(bytes[idx+33]<<8)|(bytes[idx+34]<<16)|(bytes[idx+35]<<24))>>>0;
+        const h = (bytes[idx+36]|(bytes[idx+37]<<8)|(bytes[idx+38]<<16)|(bytes[idx+39]<<24))>>>0;
+        rows.push({ k: 'Risoluzione', v: `${w} × ${h} px` });
+        rows.push({ k: 'Frame rate', v: `${fps.toFixed(2)} fps` });
+      }
+    }
+  }
+
+  if (rows.length) sections.push({ icon: '🎬', title: 'Metadati Video', rows, open: true });
+  return sections;
+}
+
+function parseMoov(data, rows) {
+  let i = 0;
+  while (i < data.length - 8) {
+    const size = (data[i]<<24|data[i+1]<<16|data[i+2]<<8|data[i+3])>>>0;
+    const type = String.fromCharCode(data[i+4],data[i+5],data[i+6],data[i+7]);
+    if (size < 8) break;
+
+    if (type === 'mvhd') {
+      // Movie header
+      const version = data[i+8];
+      const off = version === 1 ? i+8+8 : i+8+4;
+      if (version === 0) {
+        const ts = (data[off+8]<<24|data[off+9]<<16|data[off+10]<<8|data[off+11])>>>0;
+        const timescale = ts;
+        const duration = (data[off+12]<<24|data[off+13]<<16|data[off+14]<<8|data[off+15])>>>0;
+        if (timescale > 0) {
+          const secs = duration / timescale;
+          rows.push({ k: 'Durata', v: formatDuration(secs) });
+        }
+        // Creation time (seconds since 1904-01-01)
+        const creation = (data[i+12]<<24|data[i+13]<<16|data[i+14]<<8|data[i+15])>>>0;
+        if (creation > 0) {
+          const date = new Date((creation - 2082844800) * 1000);
+          rows.push({ k: 'Data creazione', v: date.toLocaleString('it-IT') });
+        }
+      }
+    }
+    if (type === 'udta') {
+      // User data — look for ©tags
+      parseUdta(data.slice(i+8, i+size), rows);
+    }
+    if (['trak','mdia','minf','stbl'].includes(type)) {
+      parseMoov(data.slice(i+8, i+size), rows);
+    }
+    i += size;
+  }
+}
+
+function parseUdta(data, rows) {
+  let i = 0;
+  while (i < data.length - 8) {
+    const size = (data[i]<<24|data[i+1]<<16|data[i+2]<<8|data[i+3])>>>0;
+    if (size < 8) break;
+    const tag = String.fromCharCode(data[i+4],data[i+5],data[i+6],data[i+7]);
+    const UDTA_TAGS = {'\xA9nam':'Titolo','\xA9ART':'Artista','\xA9alb':'Album','\xA9day':'Anno','\xA9cmt':'Commento','\xA9too':'Encoder','\xA9wrt':'Autore'};
+    if (UDTA_TAGS[tag] && size > 16) {
+      const val = new TextDecoder().decode(data.slice(i+16, i+size));
+      rows.push({ k: UDTA_TAGS[tag], v: val });
+    }
+    i += size;
+  }
+}
+
+function findChunk(bytes, id) {
+  const target = id.split('').map(c => c.charCodeAt(0));
+  for (let i = 0; i < bytes.length - 4; i++) {
+    if (bytes[i]===target[0]&&bytes[i+1]===target[1]&&bytes[i+2]===target[2]&&bytes[i+3]===target[3]) {
+      return i + 8; // return data offset
+    }
+  }
+  return -1;
+}
+
+function formatDuration(secs) {
+  const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60), s = Math.floor(secs%60);
+  return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  OFFICE DOCUMENTS (DOCX, XLSX, PPTX via ZIP/XML)
+// ═══════════════════════════════════════════════════════════════
+async function parseOfficeMeta(arrayBuffer, ext) {
+  const sections = [];
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Core properties
+    if (zip.files['docProps/core.xml']) {
+      const xml = await zip.files['docProps/core.xml'].async('string');
+      const rows = [];
+      const extract = (tag) => {
+        const m = new RegExp(`<[^:]*:?${tag}[^>]*>([^<]+)<`).exec(xml);
+        return m ? m[1].trim() : null;
+      };
+      const fields = [
+        ['creator','Autore'], ['lastModifiedBy','Ultima modifica di'],
+        ['created','Data creazione'], ['modified','Data modifica'],
+        ['title','Titolo'], ['subject','Oggetto'], ['description','Descrizione'],
+        ['keywords','Parole chiave'], ['category','Categoria'],
+        ['revision','Revisione'], ['lastPrinted','Ultima stampa'],
+        ['contentStatus','Stato']
+      ];
+      for (const [tag, label] of fields) {
+        const v = extract(tag);
+        if (v) rows.push({ k: label, v });
+      }
+      if (rows.length) sections.push({ icon: '📝', title: 'Proprietà documento', rows, open: true });
+    }
+
+    // App properties
+    if (zip.files['docProps/app.xml']) {
+      const xml = await zip.files['docProps/app.xml'].async('string');
+      const rows = [];
+      const extract = (tag) => { const m = new RegExp(`<${tag}[^>]*>([^<]+)<`).exec(xml); return m ? m[1].trim() : null; };
+      const fields = [
+        ['Application','Applicazione'], ['AppVersion','Versione app'],
+        ['Company','Azienda'], ['Manager','Manager'],
+        ['Pages','Pagine'], ['Words','Parole'], ['Characters','Caratteri'],
+        ['Lines','Righe'], ['Paragraphs','Paragrafi'],
+        ['Slides','Diapositive'], ['Notes','Note'],
+        ['TotalTime','Tempo di modifica (min)'],
+        ['Template','Template usato'], ['DocSecurity','Sicurezza documento'],
+        ['HyperlinksChanged','Link modificati'],['LinksUpToDate','Link aggiornati']
+      ];
+      for (const [tag, label] of fields) {
+        const v = extract(tag);
+        if (v) rows.push({ k: label, v });
+      }
+      if (rows.length) sections.push({ icon: '⚙️', title: 'Informazioni applicazione', rows });
+    }
+
+    // Custom properties
+    if (zip.files['docProps/custom.xml']) {
+      const xml = await zip.files['docProps/custom.xml'].async('string');
+      const rows = [];
+      const matches = [...xml.matchAll(/name="([^"]+)"[\s\S]*?<vt:[^>]+>([^<]+)<\/vt:/g)];
+      for (const m of matches) rows.push({ k: m[1], v: m[2], cls: 'highlight' });
+      if (rows.length) sections.push({ icon: '🔧', title: 'Proprietà personalizzate', rows });
+    }
+
+    // List all files in zip (structural anomaly detection)
+    const fileList = Object.keys(zip.files).filter(f => !zip.files[f].dir);
+    const structRows = fileList.map(f => ({
+      k: f.split('/').pop(),
+      v: `${f} (${formatSize(zip.files[f]._data?.uncompressedSize || 0)})`
+    }));
+    sections.push({ icon: '📦', title: `Struttura interna (${fileList.length} file)`, rows: structRows });
+
+    // Check for macros
+    const hasMacros = fileList.some(f => f.includes('vbaProject') || f.endsWith('.bin'));
+    if (hasMacros) {
+      sections.push({ icon: '⚠️', title: 'Anomalie', rows: [
+        { k: '⚠ Macro VBA', v: 'Il documento contiene macro VBA — potenzialmente pericoloso', cls: 'danger' }
+      ]});
+    }
+
+  } catch(e) {
+    sections.push({ icon: '⚠️', title: 'Errore parsing', rows: [{ k: 'Errore', v: e.message, cls: 'danger' }] });
+  }
+  return sections;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ANOMALY DETECTION
+// ═══════════════════════════════════════════════════════════════
+function buildAnomalySection(bytes, ext) {
+  const rows = [];
+  const raw = uint8ToStr(bytes);
+
+  // URLs and email addresses
+  const urls = [...new Set(raw.match(/https?:\/\/[^\s<>"']{4,80}/g) || [])].slice(0, 10);
+  if (urls.length) urls.forEach(u => rows.push({ k: 'URL trovato', v: u, cls: 'warn' }));
+
+  const emails = [...new Set(raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [])].slice(0, 5);
+  if (emails.length) emails.forEach(e => rows.push({ k: 'Email trovata', v: e, cls: 'highlight' }));
+
+  // GPS coordinates pattern
+  const coordPattern = raw.match(/[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)/g);
+  if (coordPattern) rows.push({ k: 'Coordinate GPS (testo)', v: coordPattern[0], cls: 'highlight' });
+
+  // Suspicious strings
+  const suspStrings = ['/JavaScript', '/JS ', 'eval(', 'ActiveXObject', 'WScript', 'cmd.exe', 'powershell', '/OpenAction'];
+  for (const s of suspStrings) {
+    if (raw.includes(s)) rows.push({ k: '⚠ Stringa sospetta', v: s, cls: 'danger' });
+  }
+
+  // Null bytes (might indicate binary data hidden in text)
+  const nullBytes = bytes.filter(b => b === 0).length;
+  if (nullBytes > 100 && ext !== 'pdf') {
+    rows.push({ k: 'Byte nulli', v: `${nullBytes} (${((nullBytes/bytes.length)*100).toFixed(1)}% del file)`, cls: nullBytes > bytes.length * 0.3 ? 'warn' : '' });
+  }
+
+  // File size anomaly
+  if (bytes.length > 10 * 1024 * 1024) {
+    rows.push({ k: 'Dimensione', v: `File grande (${formatSize(bytes.length)}) — potrebbe contenere dati nascosti`, cls: 'warn' });
+  }
+
+  // Check for steganography hints (JPEG with unusually large comment)
+  if (ext === 'jpg' || ext === 'jpeg') {
+    for (let i = 0; i < bytes.length - 4; i++) {
+      if (bytes[i] === 0xFF && bytes[i+1] === 0xFE) {
+        const commentLen = (bytes[i+2] << 8) | bytes[i+3];
+        if (commentLen > 100) {
+          const comment = String.fromCharCode(...bytes.slice(i+4, i+4+Math.min(commentLen-2,200)));
+          rows.push({ k: 'Commento JPEG', v: comment.trim(), cls: commentLen > 500 ? 'warn' : 'highlight' });
+          if (commentLen > 500) rows.push({ k: '⚠ Commento anomalo', v: `Commento di ${commentLen} byte — inusuale`, cls: 'warn' });
+        }
+        break;
+      }
+    }
+  }
+
+  // Multiple EOF markers
+  const eofCount = (raw.match(/%%EOF/g) || []).length;
+  if (eofCount > 1) rows.push({ k: '⚠ EOF multipli', v: `${eofCount} marcatori EOF — il file potrebbe contenere dati appesi`, cls: 'warn' });
+
+  // Check for ZIP at end of file (polyglot files)
+  if (ext !== 'zip' && ext !== 'docx' && ext !== 'xlsx') {
+    const tail = bytes.slice(-22);
+    if (tail[tail.length-22]===0x50&&tail[tail.length-21]===0x4B) {
+      rows.push({ k: '⚠ Struttura ZIP', v: 'Il file potrebbe contenere un archivio ZIP nascosto alla fine', cls: 'danger' });
+    }
+  }
+
+  if (rows.length === 0) rows.push({ k: 'Anomalie', v: 'Nessuna anomalia rilevata', cls: 'good' });
+
+  return { icon: '🚨', title: 'Anomalie & Dati nascosti', rows };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAGIC BYTES
+// ═══════════════════════════════════════════════════════════════
+function detectMagic(bytes) {
+  const sigs = [
+    { sig: [0xFF,0xD8,0xFF], desc: 'JPEG',  ext: ['jpg','jpeg'] },
+    { sig: [0x89,0x50,0x4E,0x47], desc: 'PNG', ext: ['png'] },
+    { sig: [0x47,0x49,0x46], desc: 'GIF', ext: ['gif'] },
+    { sig: [0x52,0x49,0x46,0x46], desc: 'RIFF (WAV/AVI/WEBP)', ext: ['wav','avi','webp'] },
+    { sig: [0x25,0x50,0x44,0x46], desc: 'PDF', ext: ['pdf'] },
+    { sig: [0x50,0x4B,0x03,0x04], desc: 'ZIP / Office Open XML', ext: ['zip','docx','xlsx','pptx','jar','apk'] },
+    { sig: [0x49,0x44,0x33], desc: 'MP3 (ID3)', ext: ['mp3'] },
+    { sig: [0xFF,0xFB], desc: 'MP3 (frame)', ext: ['mp3'] },
+    { sig: [0x66,0x4C,0x61,0x43], desc: 'FLAC', ext: ['flac'] },
+    { sig: [0x4F,0x67,0x67,0x53], desc: 'OGG', ext: ['ogg','opus'] },
+    { sig: [0x1A,0x45,0xDF,0xA3], desc: 'MKV/WebM (EBML)', ext: ['mkv','webm'] },
+    { sig: [0x00,0x00,0x00,0x18,0x66,0x74,0x79,0x70], desc: 'MP4/MOV', ext: ['mp4','mov','m4v'] },
+    { sig: [0x00,0x00,0x00,0x20,0x66,0x74,0x79,0x70], desc: 'MP4', ext: ['mp4'] },
+    { sig: [0x49,0x49,0x2A,0x00], desc: 'TIFF (little-endian)', ext: ['tif','tiff'] },
+    { sig: [0x4D,0x4D,0x00,0x2A], desc: 'TIFF (big-endian)', ext: ['tif','tiff'] },
+    { sig: [0xD0,0xCF,0x11,0xE0], desc: 'OLE2 (doc/xls legacy)', ext: ['doc','xls','ppt'] },
+    { sig: [0x38,0x42,0x50,0x53], desc: 'Photoshop PSD', ext: ['psd'] },
+    { sig: [0x7F,0x45,0x4C,0x46], desc: 'ELF executable', ext: ['elf'] },
+    { sig: [0x4D,0x5A], desc: 'Windows PE executable', ext: ['exe','dll'] },
+    { sig: [0xCA,0xFE,0xBA,0xBE], desc: 'Java class / Mach-O fat binary', ext: ['class'] },
+    { sig: [0x1F,0x8B], desc: 'GZIP', ext: ['gz','tgz'] },
+    { sig: [0x42,0x5A,0x68], desc: 'BZIP2', ext: ['bz2'] },
+    { sig: [0x37,0x7A,0xBC,0xAF], desc: '7-Zip', ext: ['7z'] },
+    { sig: [0x52,0x61,0x72,0x21], desc: 'RAR', ext: ['rar'] },
+  ];
+
+  for (const { sig, desc, ext } of sigs) {
+    if (sig.every((b, i) => bytes[i] === b)) return { desc, ext };
+  }
+
+  // Text detection
+  const isText = bytes.slice(0, 512).every(b => b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127));
+  if (isText) {
+    const head = String.fromCharCode(...bytes.slice(0, 20));
+    if (head.includes('<?xml')) return { desc: 'XML/SVG (testo)', ext: ['xml','svg'] };
+    if (head.includes('{') || head.includes('[')) return { desc: 'JSON (testo)', ext: ['json'] };
+    if (head.includes('<!DOCTYPE') || head.includes('<html')) return { desc: 'HTML (testo)', ext: ['html','htm'] };
+    return { desc: 'File di testo', ext: ['txt','csv','md'] };
+  }
+
+  return { desc: 'Formato sconosciuto / binario', ext: null };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ENTROPY
+// ═══════════════════════════════════════════════════════════════
+function calcEntropy(bytes) {
+  const freq = new Array(256).fill(0);
+  for (const b of bytes) freq[b]++;
+  let entropy = 0;
+  for (const f of freq) {
+    if (f > 0) {
+      const p = f / bytes.length;
+      entropy -= p * Math.log2(p);
+    }
+  }
+  return entropy;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════════
+function renderResults(file, sections, ext) {
+  const container = document.getElementById('results');
+  container.className = 'visible';
+
+  // Summary pills
+  const pills = [];
+  const totalRows = sections.reduce((a, s) => a + s.rows.length, 0);
+  pills.push({ label: `${totalRows} metadati`, cls: 'pill-purple' });
+
+  const hasGPS = sections.some(s => s.gps);
+  if (hasGPS) pills.push({ label: '📍 GPS', cls: 'pill-cyan' });
+
+  const hasAnomalies = sections.some(s => s.title.includes('Anomalie') && s.rows.some(r => r.cls === 'danger' || r.cls === 'warn'));
+  if (hasAnomalies) pills.push({ label: '⚠ Anomalie', cls: 'pill-yellow' });
+
+  const fileIcon = getFileIcon(ext, file.type);
+
+  // Build HTML
+  let html = `
+    <div class="summary-card">
+      <span class="file-icon-big">${fileIcon}</span>
+      <div class="summary-info">
+        <div class="summary-filename">${escHtml(file.name)}</div>
+        <div class="summary-type">${formatSize(file.size)} · ${file.type || '.' + ext}</div>
+        <div class="summary-pills">
+          ${pills.map(p => `<span class="pill ${p.cls}">${p.label}</span>`).join('')}
+        </div>
+      </div>
+      <div class="summary-actions">
+        <button class="action-sm" onclick="copyAllMeta()">📋 Copia tutto</button>
+        <button class="action-sm" onclick="exportJSON()">⬇ JSON</button>
+      </div>
+    </div>
+  `;
+
+  for (const section of sections) {
+    if (!section.rows || section.rows.length === 0) continue;
+    const isOpen = section.open ? 'open' : '';
+    html += `
+      <div class="section-card ${isOpen}" id="sec-${escHtml(section.title.replace(/\s/g,'_'))}">
+        <div class="section-header" onclick="toggleSection(this)">
+          <div class="section-title-wrap">
+            <span class="section-icon">${section.icon}</span>
+            <span class="section-title">${escHtml(section.title)}</span>
+            <span class="section-count">${section.rows.length} campi</span>
+          </div>
+          <span class="section-chevron">▼</span>
+        </div>
+        <div class="section-body">
+          <div class="meta-table">
+            ${section.rows.map(row => renderRow(row)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+
+  // Store for export
+  window._scanSections = sections;
+  window._scanFile = file;
+}
+
+function renderRow(row) {
+  let valHtml;
+  if (row.link) {
+    valHtml = `<a href="${escHtml(row.link)}" target="_blank" class="gps-link">🗺 ${escHtml(row.v)}</a>`;
+  } else {
+    valHtml = escHtml(String(row.v));
+  }
+  return `
+    <div class="meta-row">
+      <div class="meta-key">${escHtml(row.k)}</div>
+      <div class="meta-val ${row.cls||''}">${valHtml}</div>
+    </div>
+  `;
+}
+
+function toggleSection(header) {
+  header.closest('.section-card').classList.toggle('open');
+}
+
+function getFileIcon(ext, mime) {
+  const icons = { jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️', webp:'🖼️', tiff:'🖼️', tif:'🖼️', svg:'🖼️', psd:'🎨', pdf:'📄', mp4:'🎬', mov:'🎬', avi:'🎬', mkv:'🎬', mp3:'🎵', wav:'🎵', flac:'🎵', ogg:'🎵', aac:'🎵', docx:'📝', xlsx:'📊', pptx:'📋', zip:'🗜️', rar:'🗜️', '7z':'🗜️', exe:'⚙️', dmg:'💿' };
+  return icons[ext] || '📦';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  EXPORT / COPY
+// ═══════════════════════════════════════════════════════════════
+function copyAllMeta() {
+  if (!window._scanSections) return;
+  let text = `DeepScan — ${window._scanFile.name}\n${'='.repeat(50)}\n\n`;
+  for (const s of window._scanSections) {
+    text += `${s.title}\n${'-'.repeat(30)}\n`;
+    for (const r of s.rows) text += `${r.k}: ${r.v}\n`;
+    text += '\n';
+  }
+  navigator.clipboard.writeText(text).then(() => showToast()).catch(() => {});
+}
+
+function exportJSON() {
+  if (!window._scanSections) return;
+  const data = { file: window._scanFile.name, size: window._scanFile.size, sections: window._scanSections.map(s => ({ title: s.title, data: Object.fromEntries(s.rows.map(r => [r.k, r.v])) })) };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = window._scanFile.name + '_metadata.json';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function showToast() {
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════════════════════
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.onerror = () => reject(new Error('Errore lettura file.'));
+    r.readAsArrayBuffer(file);
+  });
+}
+
+function uint8ToStr(bytes) {
+  let s = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk)
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  return s;
+}
+
+function formatSize(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function setScanningText(t) { document.getElementById('scanningText').textContent = t; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function isImage(ext, mime) {
+  return ['jpg','jpeg','png','gif','webp','tiff','tif','bmp','svg'].includes(ext) || mime.startsWith('image/');
+}
+</script>
+</body>
+</html>
