@@ -530,27 +530,52 @@ async function convertText(bytes, ext, outName) {
 async function convertHTML(bytes, outName) {
   const html = new TextDecoder('utf-8').decode(bytes);
 
-  // Render HTML in a hidden iframe to get proper innerText with layout
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;';
-  document.body.appendChild(iframe);
+  // Detect app HTML (mostly CSS/JS)
+  const scripts = (html.match(/<script[\s\S]*?<\/script>/gi) || []).join('').length;
+  const styles  = (html.match(/<style[\s\S]*?<\/style>/gi)  || []).join('').length;
+  const ratio   = (scripts + styles) / html.length;
 
+  if (ratio > 0.6) {
+    throw new Error(
+      "Il file e' principalmente un'applicazione web (CSS/JS occupa >" + Math.round(ratio*100) + "% del file). " +
+      "PDFCast estrae solo il testo - il risultato sarebbe quasi vuoto. " +
+      "Per convertirlo fedelmente: apri il file nel browser, premi Ctrl+P e scegli Salva come PDF."
+    );
+  }
+
+  // Try iframe
+  let text = null;
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;border:none;';
+  document.body.appendChild(iframe);
   try {
     const iDoc = iframe.contentDocument || iframe.contentWindow.document;
-    iDoc.open(); iDoc.write(html); iDoc.close();
-
-    // Wait a tick for rendering
-    await new Promise(r => setTimeout(r, 100));
-
-    // Remove scripts/styles from iframe doc
-    iDoc.querySelectorAll('script,style,noscript,head').forEach(el => el.remove());
-
-    // Use innerText on the live iframe body — works correctly
-    const text = (iDoc.body && iDoc.body.innerText) ? iDoc.body.innerText : htmlToText(html);
-    await convertText(new TextEncoder().encode(text), 'txt', outName);
-  } finally {
-    document.body.removeChild(iframe);
+    iDoc.open('text/html', 'replace');
+    iDoc.write(html);
+    iDoc.close();
+    await new Promise(r => setTimeout(r, 350));
+    iDoc.querySelectorAll('script,style,noscript,link,meta').forEach(function(el) { el.remove(); });
+    const raw = iDoc.body ? (iDoc.body.innerText || iDoc.body.textContent || '') : '';
+    if (raw.trim().length > 20) text = raw;
+  } catch(e) {
+    // iframe blocked — use regex fallback
   }
+  document.body.removeChild(iframe);
+
+  // Regex fallback
+  if (!text || text.trim().length < 20) {
+    text = htmlToText(html);
+  }
+
+  if (!text || text.trim().length < 10) {
+    throw new Error(
+      "Nessun testo estraibile dall'HTML. Il contenuto potrebbe essere generato da JavaScript, " +
+      "oppure il file contiene solo immagini o struttura. " +
+      'Usa la stampa del browser (Ctrl+P -> Salva come PDF) per un risultato corretto.'
+    );
+  }
+
+  await convertText(new TextEncoder().encode(text.trim()), 'txt', outName);
 }
 
 function htmlToText(html) {
