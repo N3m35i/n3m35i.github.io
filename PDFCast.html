@@ -530,15 +530,48 @@ async function convertText(bytes, ext, outName) {
 async function convertHTML(bytes, outName) {
   const html = new TextDecoder('utf-8').decode(bytes);
 
-  // Extract text content from HTML
-  const parser = new DOMParser();
-  const doc    = parser.parseFromString(html, 'text/html');
+  // Render HTML in a hidden iframe to get proper innerText with layout
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;';
+  document.body.appendChild(iframe);
 
-  // Remove scripts and styles
-  doc.querySelectorAll('script,style,noscript').forEach(el => el.remove());
+  try {
+    const iDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iDoc.open(); iDoc.write(html); iDoc.close();
 
-  const text = doc.body ? doc.body.innerText || doc.body.textContent : html.replace(/<[^>]+>/g,'');
-  await convertText(new TextEncoder().encode(text), 'txt', outName);
+    // Wait a tick for rendering
+    await new Promise(r => setTimeout(r, 100));
+
+    // Remove scripts/styles from iframe doc
+    iDoc.querySelectorAll('script,style,noscript,head').forEach(el => el.remove());
+
+    // Use innerText on the live iframe body — works correctly
+    const text = (iDoc.body && iDoc.body.innerText) ? iDoc.body.innerText : htmlToText(html);
+    await convertText(new TextEncoder().encode(text), 'txt', outName);
+  } finally {
+    document.body.removeChild(iframe);
+  }
+}
+
+function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/td>/gi, '\t')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // ── DOCX ──────────────────────────────────────────────────
