@@ -212,41 +212,6 @@
     </div>
   </div>
 
-  <!-- Presets -->
-  <div style="font-family:var(--mono);font-size:.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">// Ricerche predefinite — clicca per caricare</div>
-  <div class="presets-grid" id="presetsGrid">
-    <div class="preset-card" onclick="loadPreset('pdf')">
-      <span class="preset-icon">📄</span>
-      <div class="preset-name">Trova PDF</div>
-      <div class="preset-desc">Cerca documenti PDF su un argomento</div>
-    </div>
-    <div class="preset-card" onclick="loadPreset('site')">
-      <span class="preset-icon">🌐</span>
-      <div class="preset-name">Cerca in un sito</div>
-      <div class="preset-desc">Ricerca all'interno di un sito specifico</div>
-    </div>
-    <div class="preset-card" onclick="loadPreset('competitor')">
-      <span class="preset-icon">🔍</span>
-      <div class="preset-name">Siti simili</div>
-      <div class="preset-desc">Trova siti correlati a un dominio</div>
-    </div>
-    <div class="preset-card" onclick="loadPreset('excel')">
-      <span class="preset-icon">📊</span>
-      <div class="preset-name">Trova Excel/CSV</div>
-      <div class="preset-desc">Cerca fogli di calcolo pubblici</div>
-    </div>
-    <div class="preset-card" onclick="loadPreset('news')">
-      <span class="preset-icon">📰</span>
-      <div class="preset-name">Notizie esatte</div>
-      <div class="preset-desc">Cerca una frase esatta nelle news</div>
-    </div>
-    <div class="preset-card" onclick="loadPreset('price')">
-      <span class="preset-icon">💰</span>
-      <div class="preset-name">Range di prezzo</div>
-      <div class="preset-desc">Cerca prodotti in un range numerico</div>
-    </div>
-  </div>
-
   <!-- Builder -->
   <div class="layout">
 
@@ -405,6 +370,47 @@
 
     </div>
   </div><!-- /layout -->
+
+
+  <div style="font-family:var(--mono);font-size:.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin:8px 0 12px;">// Esempi di ricerca predefinita — clicca per caricare</div>
+  <div class="presets-grid" id="presetsGrid">
+    <div class="preset-card" onclick="loadPreset('pdf')">
+      <span class="preset-icon">📄</span>
+      <div class="preset-name">Trova PDF</div>
+      <div class="preset-desc">Cerca documenti PDF su un argomento</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('site')">
+      <span class="preset-icon">🌐</span>
+      <div class="preset-name">Cerca in un sito</div>
+      <div class="preset-desc">Ricerca all'interno di un sito specifico</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('competitor')">
+      <span class="preset-icon">🔍</span>
+      <div class="preset-name">Siti simili</div>
+      <div class="preset-desc">Trova siti correlati a un dominio</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('excel')">
+      <span class="preset-icon">📊</span>
+      <div class="preset-name">Trova Excel/CSV</div>
+      <div class="preset-desc">Cerca fogli di calcolo pubblici</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('news')">
+      <span class="preset-icon">📰</span>
+      <div class="preset-name">Notizie esatte</div>
+      <div class="preset-desc">Cerca una frase esatta nelle news</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('price')">
+      <span class="preset-icon">💰</span>
+      <div class="preset-name">Range di prezzo</div>
+      <div class="preset-desc">Cerca prodotti in un range numerico</div>
+    </div>
+  </div>
+
+    <div style="display:flex;align-items:center;gap:12px;margin:28px 0 16px;">
+    <div style="flex:1;height:1px;background:var(--border);"></div>
+    <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);white-space:nowrap;">// Come funziona</span>
+    <div style="flex:1;height:1px;background:var(--border);"></div>
+  </div>
 
   <div class="info-strip">
     <div class="info-item"><span class="ii">⚡</span><div class="it">Live preview</div><div class="id">La query si aggiorna<br>mentre scrivi</div></div>
