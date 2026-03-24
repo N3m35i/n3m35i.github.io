@@ -2,70 +2,77 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/</loc>
+    <loc>https://n3m35i.github.io/index.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/FileLock.html</loc>
+    <loc>https://n3m35i.github.io/FileLock.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/WatermarkIt.html</loc>
+    <loc>https://n3m35i.github.io/WatermarkIt.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/TextCrypt.html</loc>
+    <loc>https://n3m35i.github.io/TextCrypt.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/ExcelUnlock.html</loc>
+    <loc>https://n3m35i.github.io/ExcelUnlock.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/PDFUnlock.html</loc>
+    <loc>https://n3m35i.github.io/PDFUnlock.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/PDForge.html</loc>
+    <loc>https://n3m35i.github.io/PDForge.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/PDFCast.html</loc>
+    <loc>https://n3m35i.github.io/PDFCast.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/DeepScan.html</loc>
+    <loc>https://n3m35i.github.io/DeepScan.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
   <url>
-    <loc>https://n3m35i.github.io/n3m35i-tools/NegativeScan.html</loc>
+    <loc>https://n3m35i.github.io/SuperSearch.html</loc>
+    <lastmod>2026-03-24</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://n3m35i.github.io/NegativeScan.html</loc>
     <lastmod>2026-03-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
