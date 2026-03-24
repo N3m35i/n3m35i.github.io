@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SuperSearch — Ottimizzatore di ricerca Google | N3m35i's Tools</title>
+<meta name="description" content="Costruisci ricerche Google avanzate in modo visuale. Trova esattamente quello che cerchi usando operatori come site:, filetype:, intitle: e molti altri. Zero tecnicismi.">
+<meta name="keywords" content="ricerca google avanzata, google dork, operatori google, ricerca avanzata, filetype pdf google, site google search">
+<meta name="author" content="N3m35i">
+<meta name="robots" content="index, follow">
+<meta property="og:title" content="SuperSearch — Ottimizzatore di ricerca Google">
+<meta property="og:description" content="Costruisci ricerche Google avanzate in modo visuale. Trova esattamente quello che cerchi.">
+<meta property="og:type" content="website">
+<script data-goatcounter="https://n3m35istools.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a26;
+    --border: #2a2a40;
+    --accent: #4ade80;
+    --accent-dim: rgba(74,222,128,0.07);
+    --accent-border: rgba(74,222,128,0.25);
+    --text: #e8e8f0;
+    --muted: #6666a0;
+    --red: #ff4d6d;
+    --yellow: #ffaa00;
+    --blue: #60a5fa;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 80px; overflow-x: hidden; position: relative;
+  }
+
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.22; pointer-events: none; z-index: 0;
+  }
+
+  body::after {
+    content: ''; position: fixed; top: -150px; left: -150px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(74,222,128,0.05) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+    animation: drift 12s ease-in-out infinite alternate;
+  }
+
+  @keyframes drift { from{transform:translate(0,0)} to{transform:translate(50px,40px)} }
+
+  .container { position: relative; z-index: 1; width: 100%; max-width: 860px; animation: fadeUp .5s ease; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+  /* Header */
+  header { text-align: center; margin-bottom: 40px; }
+  .back-link { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: .7rem; letter-spacing: 1px; color: var(--muted); text-decoration: none; margin-bottom: 24px; transition: color .2s; }
+  .back-link:hover { color: var(--text); }
+  .logo-wrap { display: inline-flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .logo-icon { width: 44px; height: 44px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -1px; }
+  h1 span { color: var(--accent); }
+  .subtitle { font-family: var(--mono); font-size: .72rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-top: 6px; }
+
+  /* Layout */
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media(max-width:700px) { .layout { grid-template-columns: 1fr; } }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+
+  .card-title { font-family: var(--mono); font-size: .68rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+
+  /* Fields */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field-header { display: flex; align-items: center; justify-content: space-between; }
+  .field label { font-family: var(--mono); font-size: .68rem; color: var(--muted); letter-spacing: .5px; }
+  .field-badge { font-family: var(--mono); font-size: .58rem; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+  .field-badge.op { border-color: var(--accent-border); color: var(--accent); background: var(--accent-dim); }
+
+  .field input, .field select, .field textarea {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-family: var(--mono); font-size: .82rem; color: var(--text);
+    outline: none; transition: border-color .2s; width: 100%;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+  .field input::placeholder, .field textarea::placeholder { color: var(--muted); }
+  .field select option { background: var(--surface2); }
+
+  /* Tag input (multi-value) */
+  .tag-input-wrap {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+    min-height: 42px; cursor: text; transition: border-color .2s;
+  }
+  .tag-input-wrap:focus-within { border-color: var(--accent); }
+  .tag-input-wrap input { background: none; border: none; outline: none; font-family: var(--mono); font-size: .82rem; color: var(--text); flex: 1; min-width: 80px; padding: 3px 4px; }
+  .tag-input-wrap input::placeholder { color: var(--muted); }
+
+  .val-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-family: var(--mono); font-size: .7rem; color: var(--text); white-space: nowrap; }
+  .val-tag button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .8rem; padding: 0 1px; line-height: 1; }
+  .val-tag button:hover { color: var(--red); }
+  .val-tag.exact { border-color: var(--accent-border); color: var(--accent); }
+  .val-tag.exclude { border-color: rgba(255,77,109,.3); color: var(--red); }
+  .val-tag.operator { border-color: rgba(96,165,250,.3); color: var(--blue); }
+
+  /* OR/AND builder */
+  .or-row { display: flex; gap: 6px; align-items: center; }
+  .or-row input { flex: 1; }
+  .or-row select { width: 80px; flex-shrink: 0; }
+
+  /* Query output */
+  .query-card { background: var(--surface); border: 1px solid var(--accent-border); border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
+
+  .query-label { font-family: var(--mono); font-size: .68rem; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; justify-content: space-between; }
+
+  .query-display {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; font-family: var(--mono); font-size: .85rem; color: var(--text);
+    word-break: break-all; line-height: 1.7; min-height: 60px;
+    position: relative; white-space: pre-wrap;
+  }
+
+  .query-display .q-keyword { color: var(--text); }
+  .query-display .q-exact   { color: var(--accent); }
+  .query-display .q-exclude { color: var(--red); }
+  .query-display .q-op      { color: var(--blue); font-weight: 700; }
+  .query-display .q-val     { color: var(--yellow); }
+
+  .query-empty { color: var(--muted); font-style: italic; font-size: .78rem; }
+
+  /* Search engines */
+  .engines-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .engine-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .5px;
+    padding: 10px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted); cursor: pointer; transition: all .2s;
+    text-decoration: none;
+  }
+  .engine-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+  .engine-btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+  .engine-btn.primary:hover { box-shadow: 0 6px 20px rgba(74,222,128,.3); color: #000; }
+
+  /* Presets */
+  .presets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 8px; margin-bottom: 20px; }
+  .preset-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; cursor: pointer; transition: all .2s;
+  }
+  .preset-card:hover { border-color: var(--accent-border); background: var(--accent-dim); transform: translateY(-2px); }
+  .preset-icon { font-size: 1.2rem; margin-bottom: 6px; display: block; }
+  .preset-name { font-family: var(--sans); font-size: .82rem; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+  .preset-desc { font-family: var(--mono); font-size: .62rem; color: var(--muted); line-height: 1.4; }
+
+  /* Section divider */
+  .section-div { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+  .section-div span { font-family: var(--mono); font-size: .62rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .section-div::before, .section-div::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* Icon btn */
+  .icon-btn { font-family: var(--mono); font-size: .68rem; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; transition: all .15s; }
+  .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 28px; right: 28px; background: var(--surface); border: 1px solid var(--accent-border); border-radius: 10px; padding: 11px 16px; font-family: var(--mono); font-size: .72rem; color: var(--accent); z-index: 100; opacity: 0; transform: translateY(8px); transition: all .2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Info strip */
+  .info-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 20px; }
+  @media(max-width:480px) { .info-strip { grid-template-columns: 1fr; } }
+  .info-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+  .info-item .ii { font-size: 1.3rem; margin-bottom: 5px; display: block; }
+  .info-item .it { font-family: var(--sans); font-size: .78rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .info-item .id { font-family: var(--mono); font-size: .62rem; color: var(--muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <a href="index.html" class="back-link">← N3m35i's Tools</a>
+    <div class="logo-wrap">
+      <div class="logo-icon">🔎</div>
+      <h1>Super<span>Search</span></h1>
+    </div>
+    <p class="subtitle">Costruttore di ricerche Google avanzate · Live preview</p>
+  </header>
+
+  <!-- Query output (always visible) -->
+  <div class="query-card">
+    <div class="query-label">
+      <span>// La tua ricerca</span>
+      <div style="display:flex;gap:8px">
+        <button class="icon-btn" onclick="copyQuery()">📋 Copia</button>
+        <button class="icon-btn" onclick="resetAll()">↺ Reset</button>
+      </div>
+    </div>
+    <div class="query-display" id="queryDisplay"><span class="query-empty">Compila i campi qui sotto per costruire la tua ricerca…</span></div>
+    <div class="engines-row">
+      <a class="engine-btn primary" id="btnGoogle" href="#" target="_blank" onclick="return openEngine('google')">🔍 Cerca su Google</a>
+      <a class="engine-btn" id="btnBing" href="#" target="_blank" onclick="return openEngine('bing')">🔎 Bing</a>
+      <a class="engine-btn" id="btnDDG" href="#" target="_blank" onclick="return openEngine('ddg')">🦆 DuckDuckGo</a>
+    </div>
+  </div>
+
+  <!-- Presets -->
+  <div style="font-family:var(--mono);font-size:.68rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">// Ricerche predefinite — clicca per caricare</div>
+  <div class="presets-grid" id="presetsGrid">
+    <div class="preset-card" onclick="loadPreset('pdf')">
+      <span class="preset-icon">📄</span>
+      <div class="preset-name">Trova PDF</div>
+      <div class="preset-desc">Cerca documenti PDF su un argomento</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('site')">
+      <span class="preset-icon">🌐</span>
+      <div class="preset-name">Cerca in un sito</div>
+      <div class="preset-desc">Ricerca all'interno di un sito specifico</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('competitor')">
+      <span class="preset-icon">🔍</span>
+      <div class="preset-name">Siti simili</div>
+      <div class="preset-desc">Trova siti correlati a un dominio</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('excel')">
+      <span class="preset-icon">📊</span>
+      <div class="preset-name">Trova Excel/CSV</div>
+      <div class="preset-desc">Cerca fogli di calcolo pubblici</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('news')">
+      <span class="preset-icon">📰</span>
+      <div class="preset-name">Notizie esatte</div>
+      <div class="preset-desc">Cerca una frase esatta nelle news</div>
+    </div>
+    <div class="preset-card" onclick="loadPreset('price')">
+      <span class="preset-icon">💰</span>
+      <div class="preset-name">Range di prezzo</div>
+      <div class="preset-desc">Cerca prodotti in un range numerico</div>
+    </div>
+  </div>
+
+  <!-- Builder -->
+  <div class="layout">
+
+    <!-- Left column -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+
+      <div class="card">
+        <div class="card-title">// Cosa stai cercando</div>
+
+        <!-- Keywords -->
+        <div class="field">
+          <div class="field-header">
+            <label>Parole chiave generali</label>
+          </div>
+          <input type="text" id="fKeywords" placeholder="es. ricette pasta italiana" oninput="buildQuery()">
+        </div>
+
+        <!-- Exact phrases -->
+        <div class="field">
+          <div class="field-header">
+            <label>Frasi esatte</label>
+            <span class="field-badge op">"frase"</span>
+          </div>
+          <div class="tag-input-wrap" id="exactWrap" onclick="focusTagInput('exactInput')">
+            <input type="text" id="exactInput" placeholder="Scrivi e premi Invio…" onkeydown="addTag(event,'exact')">
+          </div>
+          <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);">Premi Invio per aggiungere ogni frase</div>
+        </div>
+
+        <!-- Exclude -->
+        <div class="field">
+          <div class="field-header">
+            <label>Escludi parole</label>
+            <span class="field-badge" style="border-color:rgba(255,77,109,.3);color:var(--red);">-parola</span>
+          </div>
+          <div class="tag-input-wrap" id="excludeWrap" onclick="focusTagInput('excludeInput')">
+            <input type="text" id="excludeInput" placeholder="Scrivi e premi Invio…" onkeydown="addTag(event,'exclude')">
+          </div>
+        </div>
+
+        <!-- OR / AND groups -->
+        <div class="field">
+          <div class="field-header">
+            <label>Gruppi OR / AND</label>
+            <span class="field-badge op">OR AND</span>
+          </div>
+          <div id="orRows" style="display:flex;flex-direction:column;gap:6px;"></div>
+          <button class="icon-btn" style="align-self:flex-start;margin-top:2px" onclick="addOrRow()">＋ Aggiungi gruppo</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">// Range numerico</div>
+        <div class="field">
+          <label>Cerca numeri tra… e…</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="rangeMin" placeholder="es. 100" oninput="buildQuery()" style="flex:1">
+            <span style="font-family:var(--mono);font-size:.8rem;color:var(--muted);">..</span>
+            <input type="number" id="rangeMax" placeholder="es. 500" oninput="buildQuery()" style="flex:1">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right column -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+
+      <div class="card">
+        <div class="card-title">// Dove cercare</div>
+
+        <!-- Site -->
+        <div class="field">
+          <div class="field-header">
+            <label>Solo in questo sito</label>
+            <span class="field-badge op">site:</span>
+          </div>
+          <input type="text" id="fSite" placeholder="es. wikipedia.org" oninput="buildQuery()">
+        </div>
+
+        <!-- Related -->
+        <div class="field">
+          <div class="field-header">
+            <label>Siti simili a</label>
+            <span class="field-badge op">related:</span>
+          </div>
+          <input type="text" id="fRelated" placeholder="es. wikipedia.org" oninput="buildQuery()">
+        </div>
+
+        <!-- Cache -->
+        <div class="field">
+          <div class="field-header">
+            <label>Cache Google di</label>
+            <span class="field-badge op">cache:</span>
+          </div>
+          <input type="text" id="fCache" placeholder="es. esempio.com/pagina" oninput="buildQuery()">
+        </div>
+
+        <!-- File type -->
+        <div class="field">
+          <div class="field-header">
+            <label>Tipo di file</label>
+            <span class="field-badge op">filetype:</span>
+          </div>
+          <select id="fFiletype" onchange="buildQuery()">
+            <option value="">— qualsiasi —</option>
+            <option value="pdf">PDF</option>
+            <option value="doc">Word (DOC)</option>
+            <option value="docx">Word (DOCX)</option>
+            <option value="xls">Excel (XLS)</option>
+            <option value="xlsx">Excel (XLSX)</option>
+            <option value="ppt">PowerPoint (PPT)</option>
+            <option value="pptx">PowerPoint (PPTX)</option>
+            <option value="csv">CSV</option>
+            <option value="txt">Testo (TXT)</option>
+            <option value="xml">XML</option>
+            <option value="json">JSON</option>
+            <option value="jpg">Immagine JPG</option>
+            <option value="png">Immagine PNG</option>
+            <option value="mp4">Video MP4</option>
+            <option value="mp3">Audio MP3</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">// Dove appare il testo</div>
+
+        <!-- intitle -->
+        <div class="field">
+          <div class="field-header">
+            <label>Nel titolo della pagina</label>
+            <span class="field-badge op">intitle:</span>
+          </div>
+          <input type="text" id="fIntitle" placeholder="es. guida completa" oninput="buildQuery()">
+        </div>
+
+        <!-- inurl -->
+        <div class="field">
+          <div class="field-header">
+            <label>Nell'indirizzo web (URL)</label>
+            <span class="field-badge op">inurl:</span>
+          </div>
+          <input type="text" id="fInurl" placeholder="es. download" oninput="buildQuery()">
+        </div>
+
+        <!-- intext -->
+        <div class="field">
+          <div class="field-header">
+            <label>Nel testo della pagina</label>
+            <span class="field-badge op">intext:</span>
+          </div>
+          <input type="text" id="fIntext" placeholder="es. scarica gratis" oninput="buildQuery()">
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /layout -->
+
+  <div class="info-strip">
+    <div class="info-item"><span class="ii">⚡</span><div class="it">Live preview</div><div class="id">La query si aggiorna<br>mentre scrivi</div></div>
+    <div class="info-item"><span class="ii">🔍</span><div class="it">3 motori</div><div class="id">Google, Bing<br>e DuckDuckGo</div></div>
+    <div class="info-item"><span class="ii">📋</span><div class="it">Copia & incolla</div><div class="id">Copia la query<br>in un click</div></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">✓ Copiato negli appunti</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+const tags = { exact: [], exclude: [] };
+let orRows = []; // [{termA, op, termB}]
+
+// ═══════════════════════════════════════════
+//  QUERY BUILDER
+// ═══════════════════════════════════════════
+function buildQuery() {
+  const parts = [];
+
+  const keywords = v('fKeywords').trim();
+  if (keywords) parts.push({ type: 'keyword', text: keywords });
+
+  tags.exact.forEach(t => parts.push({ type: 'exact', text: `"${t}"` }));
+  tags.exclude.forEach(t => parts.push({ type: 'exclude', text: `-${t}` }));
+
+  orRows.forEach(row => {
+    if (row.a && row.b) {
+      parts.push({ type: 'operator', text: `(${row.a} ${row.op} ${row.b})` });
+    } else if (row.a) {
+      parts.push({ type: 'keyword', text: row.a });
+    }
+  });
+
+  const site     = v('fSite').trim().replace(/^https?:\/\//,'');
+  const related  = v('fRelated').trim().replace(/^https?:\/\//,'');
+  const cache    = v('fCache').trim();
+  const filetype = v('fFiletype');
+  const intitle  = v('fIntitle').trim();
+  const inurl    = v('fInurl').trim();
+  const intext   = v('fIntext').trim();
+  const rMin     = v('rangeMin').trim();
+  const rMax     = v('rangeMax').trim();
+
+  if (site)     parts.push({ type: 'op', op: 'site',     val: site });
+  if (related)  parts.push({ type: 'op', op: 'related',  val: related });
+  if (cache)    parts.push({ type: 'op', op: 'cache',    val: cache });
+  if (filetype) parts.push({ type: 'op', op: 'filetype', val: filetype });
+  if (intitle)  parts.push({ type: 'op', op: 'intitle',  val: intitle.includes(' ') ? `"${intitle}"` : intitle });
+  if (inurl)    parts.push({ type: 'op', op: 'inurl',    val: inurl });
+  if (intext)   parts.push({ type: 'op', op: 'intext',   val: intext.includes(' ') ? `"${intext}"` : intext });
+  if (rMin && rMax) parts.push({ type: 'range', text: `${rMin}..${rMax}` });
+
+  renderQuery(parts);
+  return parts;
+}
+
+function getQueryString(parts) {
+  if (!parts) parts = buildQuery();
+  return parts.map(p => {
+    if (p.type === 'op') return `${p.op}:${p.val}`;
+    return p.text;
+  }).join(' ').trim();
+}
+
+function renderQuery(parts) {
+  const el = document.getElementById('queryDisplay');
+  if (!parts.length) {
+    el.innerHTML = '<span class="query-empty">Compila i campi qui sotto per costruire la tua ricerca…</span>';
+    return;
+  }
+
+  el.innerHTML = parts.map(p => {
+    if (p.type === 'keyword')  return `<span class="q-keyword">${escHtml(p.text)}</span>`;
+    if (p.type === 'exact')    return `<span class="q-exact">${escHtml(p.text)}</span>`;
+    if (p.type === 'exclude')  return `<span class="q-exclude">${escHtml(p.text)}</span>`;
+    if (p.type === 'operator') return `<span class="q-op">${escHtml(p.text)}</span>`;
+    if (p.type === 'range')    return `<span class="q-val">${escHtml(p.text)}</span>`;
+    if (p.type === 'op')       return `<span class="q-op">${escHtml(p.op)}:</span><span class="q-val">${escHtml(p.val)}</span>`;
+    return escHtml(p.text || '');
+  }).join(' ');
+}
+
+// ═══════════════════════════════════════════
+//  TAG INPUTS
+// ═══════════════════════════════════════════
+function addTag(e, type) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const input = e.target;
+  const val = input.value.trim().replace(/^["']|["']$/g, '');
+  if (!val) return;
+  tags[type].push(val);
+  input.value = '';
+  renderTags(type);
+  buildQuery();
+}
+
+function removeTag(type, i) {
+  tags[type].splice(i, 1);
+  renderTags(type);
+  buildQuery();
+}
+
+function renderTags(type) {
+  const wrap = document.getElementById(type + 'Wrap');
+  const input = document.getElementById(type + 'Input');
+  // Remove existing tags
+  wrap.querySelectorAll('.val-tag').forEach(el => el.remove());
+  tags[type].forEach((t, i) => {
+    const tag = document.createElement('span');
+    tag.className = `val-tag ${type}`;
+    tag.innerHTML = `${escHtml(type === 'exact' ? `"${t}"` : `-${t}`)} <button onclick="removeTag('${type}',${i})">×</button>`;
+    wrap.insertBefore(tag, input);
+  });
+}
+
+function focusTagInput(id) {
+  document.getElementById(id).focus();
+}
+
+// ═══════════════════════════════════════════
+//  OR/AND ROWS
+// ═══════════════════════════════════════════
+function addOrRow() {
+  const id = Date.now();
+  orRows.push({ id, a: '', op: 'OR', b: '' });
+  renderOrRows();
+}
+
+function renderOrRows() {
+  const container = document.getElementById('orRows');
+  container.innerHTML = orRows.map((row, i) => `
+    <div class="or-row" id="or-${row.id}">
+      <input type="text" value="${escHtml(row.a)}" placeholder="termine A"
+        oninput="orRows[${i}].a=this.value;buildQuery()" style="flex:1">
+      <select onchange="orRows[${i}].op=this.value;buildQuery()" style="width:72px">
+        <option value="OR"  ${row.op==='OR'?'selected':''}>OR</option>
+        <option value="AND" ${row.op==='AND'?'selected':''}>AND</option>
+      </select>
+      <input type="text" value="${escHtml(row.b)}" placeholder="termine B"
+        oninput="orRows[${i}].b=this.value;buildQuery()" style="flex:1">
+      <button class="icon-btn" onclick="removeOrRow(${i})" style="flex-shrink:0">✕</button>
+    </div>`).join('');
+}
+
+function removeOrRow(i) {
+  orRows.splice(i, 1);
+  renderOrRows();
+  buildQuery();
+}
+
+// ═══════════════════════════════════════════
+//  PRESETS
+// ═══════════════════════════════════════════
+const PRESETS = {
+  pdf: {
+    keywords: 'inserisci argomento',
+    filetype: 'pdf',
+  },
+  site: {
+    keywords: 'argomento da cercare',
+    site: 'esempio.com',
+  },
+  competitor: {
+    related: 'esempio.com',
+  },
+  excel: {
+    keywords: 'dati statistiche',
+    filetype: 'xlsx',
+  },
+  news: {
+    exact: ['frase esatta da cercare'],
+    intitle: 'notizia',
+  },
+  price: {
+    keywords: 'prodotto',
+    rangeMin: '100',
+    rangeMax: '500',
+  },
+};
+
+function loadPreset(name) {
+  resetAll(true);
+  const p = PRESETS[name];
+  if (!p) return;
+
+  if (p.keywords)  { document.getElementById('fKeywords').value = p.keywords; }
+  if (p.site)      { document.getElementById('fSite').value = p.site; }
+  if (p.related)   { document.getElementById('fRelated').value = p.related; }
+  if (p.filetype)  { document.getElementById('fFiletype').value = p.filetype; }
+  if (p.intitle)   { document.getElementById('fIntitle').value = p.intitle; }
+  if (p.rangeMin)  { document.getElementById('rangeMin').value = p.rangeMin; }
+  if (p.rangeMax)  { document.getElementById('rangeMax').value = p.rangeMax; }
+  if (p.exact)     { tags.exact = [...p.exact]; renderTags('exact'); }
+  if (p.exclude)   { tags.exclude = [...p.exclude]; renderTags('exclude'); }
+
+  buildQuery();
+}
+
+// ═══════════════════════════════════════════
+//  SEARCH ENGINES
+// ═══════════════════════════════════════════
+function openEngine(engine) {
+  const q = getQueryString();
+  if (!q) return false;
+  const urls = {
+    google: `https://www.google.com/search?q=${encodeURIComponent(q)}`,
+    bing:   `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
+    ddg:    `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
+  };
+  window.open(urls[engine], '_blank');
+  return false;
+}
+
+// ═══════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════
+function resetAll(silent) {
+  tags.exact = []; tags.exclude = [];
+  orRows = [];
+  renderTags('exact'); renderTags('exclude'); renderOrRows();
+  ['fKeywords','fSite','fRelated','fCache','fIntitle','fInurl','fIntext','rangeMin','rangeMax'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('fFiletype').value = '';
+  if (!silent) buildQuery();
+}
+
+async function copyQuery() {
+  const q = getQueryString();
+  if (!q) return;
+  try {
+    await navigator.clipboard.writeText(q);
+    showToast();
+  } catch(e) {}
+}
+
+function showToast() {
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function v(id) { return document.getElementById(id)?.value || ''; }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>
