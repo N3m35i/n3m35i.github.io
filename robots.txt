@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://n3m35i.github.io/n3m35i-tools/sitemap.xml
