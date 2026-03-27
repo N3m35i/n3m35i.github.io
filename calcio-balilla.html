@@ -536,8 +536,13 @@ function recalcAllRatings() {
 }
 
 // ===================== TEAM GENERATOR =====================
-function generateTeams(presentIds, goalTarget) {
-  // 5 players, 4 play at a time, 1 rests — rotate rest
+function roleOk(id, role) {
+  const p = getPlayer(id);
+  if (!p.roleFixed || p.roleFixed === 'null') return true;
+  return p.roleFixed === role;
+}
+
+function generateTeams(presentIds) {
   if (presentIds.length < 4) return null;
   const perms = [];
   for (let i = 0; i < presentIds.length; i++) {
@@ -553,6 +558,8 @@ function generateTeams(presentIds, goalTarget) {
         [{ id: t1[0], role: 'A' }, { id: t1[1], role: 'P' }, { id: t2[0], role: 'A' }, { id: t2[1], role: 'P' }],
       ];
       roleAssignments.forEach(ra => {
+        // Skip if any assignment violates a player's roleFixed
+        if (!ra.every(p => roleOk(p.id, p.role))) return;
         const team1 = [ra[0], ra[1]];
         const team2 = [ra[2], ra[3]];
         const r1 = team1.reduce((s, p) => s + getRoleRating(p.id, p.role), 0) / 2;
@@ -565,15 +572,15 @@ function generateTeams(presentIds, goalTarget) {
   return perms[0] || null;
 }
 
-function generateSession(presentIds, numMatches, goalTarget) {
+function generateSession(presentIds, numMatches) {
   const matchList = [];
   const restCount = {};
   presentIds.forEach(id => restCount[id] = 0);
 
   for (let i = 0; i < numMatches; i++) {
     const sorted = [...presentIds].sort((a, b) => (restCount[a] || 0) - (restCount[b] || 0));
-    const gen = generateTeams(sorted, goalTarget);
-    if (!gen) break;
+    const gen = generateTeams(sorted);
+    if (!gen) { toast('impossibile generare squadre con i vincoli di ruolo attuali'); break; }
     matchList.push({ team1: gen.team1, team2: gen.team2, resting: gen.resting, score1: null, score2: null, done: false });
     restCount[gen.resting] = (restCount[gen.resting] || 0) + 1;
   }
@@ -685,6 +692,20 @@ function renderRank() {
   document.getElementById('rank-list').innerHTML = html || '<div class="empty"><div class="empty-icon">📊</div>Nessuna partita ancora</div>';
 }
 
+window.setPlayerRole = async function(id, role) {
+  const p = getPlayer(id);
+  p.roleFixed = role; // null | 'P' | 'A'
+  // Update toggle UI immediately
+  ['null','P','A'].forEach(r => {
+    const el = document.getElementById('rf-' + r);
+    if (el) { el.classList.remove('btn-primary'); el.classList.add('btn-secondary'); }
+  });
+  const active = document.getElementById('rf-' + role);
+  if (active) { active.classList.remove('btn-secondary'); active.classList.add('btn-primary'); }
+  await saveAll();
+  renderPlayers();
+};
+
 // ===================== RENDER: PLAYER DETAIL =====================
 window.showPlayerDetail = function(id) {
   const p = getPlayer(id);
@@ -700,6 +721,7 @@ window.showPlayerDetail = function(id) {
   const winPct = playerMatches.length ? Math.round(wins / playerMatches.length * 100) : 0;
   const asP = playerMatches.filter(m => [...m.team1, ...m.team2].find(x => x.id === id)?.role === 'P').length;
   const asA = playerMatches.length - asP;
+  const rf = p.roleFixed || 'null';
 
   openModal(`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
@@ -728,6 +750,17 @@ window.showPlayerDetail = function(id) {
           <div style="font-family:var(--font-head);font-size:22px;font-weight:800;margin-top:4px;">${p.ratingA}</div>
           <div style="font-size:10px;color:var(--muted);margin-top:2px;">${asA} partite</div>
         </div>
+      </div>
+    </div>
+    <div style="margin-bottom:20px;">
+      <div class="label" style="margin-bottom:10px;">ruolo fisso</div>
+      <div style="display:flex;gap:8px;">
+        <button id="rf-null" class="btn btn-sm ${rf==='null'?'btn-primary':'btn-secondary'}" style="flex:1;" onclick="setPlayerRole('${id}', 'null')">libero</button>
+        <button id="rf-P"    class="btn btn-sm ${rf==='P'?'btn-primary':'btn-secondary'}" style="flex:1;color:${rf==='P'?'#0a0a0a':'var(--blue)'};" onclick="setPlayerRole('${id}', 'P')">solo POR</button>
+        <button id="rf-A"    class="btn btn-sm ${rf==='A'?'btn-primary':'btn-secondary'}" style="flex:1;color:${rf==='A'?'#0a0a0a':'var(--orange)'};" onclick="setPlayerRole('${id}', 'A')">solo ATT</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">
+        ${rf==='null' ? 'Il generatore assegna il ruolo liberamente.' : rf==='P' ? '⚠️ Il generatore assegnerà sempre portiere.' : '⚠️ Il generatore assegnerà sempre attaccante.'}
       </div>
     </div>
     <button class="btn btn-secondary btn-full" onclick="closeModalForce()">chiudi</button>
@@ -837,7 +870,7 @@ window.setGoalTarget = function(n) {
 window.startSession = function() {
   const presentIds = [..._selectedPlayers];
   if (presentIds.length < 4) { toast('servono almeno 4 giocatori'); return; }
-  const matchList = generateSession(presentIds, _numMatches, _goalTarget);
+  const matchList = generateSession(presentIds, _numMatches);
   const sid = 'ses_' + Date.now();
   session = { id: sid, presentIds, numMatches: _numMatches, goalTarget: _goalTarget, matches: matchList, current: 0, done: false, ts: Date.now() };
   // Register in history
@@ -1512,12 +1545,18 @@ function renderPlayers() {
       return inT1 ? m.score1 > m.score2 : m.score2 > m.score1;
     }).length;
 
+    const rfLabel = p.roleFixed === 'P' ? `<span style="font-size:9px;background:var(--blue)20;color:var(--blue);padding:2px 7px;border-radius:3px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">solo POR</span>`
+                  : p.roleFixed === 'A' ? `<span style="font-size:9px;background:var(--orange)20;color:var(--orange);padding:2px 7px;border-radius:3px;text-transform:uppercase;letter-spacing:.06em;margin-left:6px;">solo ATT</span>`
+                  : '';
     html += `
     <div class="card" style="margin-bottom:8px;">
-      <div style="display:flex;align-items:center;gap:12px;" onclick="showPlayerDetail('${p.id}')" style="cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:12px;">
         ${avatar(p, 44)}
         <div style="flex:1;cursor:pointer;" onclick="showPlayerDetail('${p.id}')">
-          <div style="font-family:var(--font-head);font-weight:700;font-size:18px;letter-spacing:.01em;text-transform:uppercase;">${p.name}</div>
+          <div style="display:flex;align-items:center;">
+            <span style="font-family:var(--font-head);font-weight:700;font-size:18px;letter-spacing:.01em;text-transform:uppercase;">${p.name}</span>
+            ${rfLabel}
+          </div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">${playerMatches.length} partite · ${wins} vittorie</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
