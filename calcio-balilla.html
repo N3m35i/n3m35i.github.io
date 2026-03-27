@@ -386,34 +386,37 @@ function startRealtimeSync() {
     if (val && Array.isArray(val)) {
       players = val;
     } else if (!val) {
-      // First time: seed default players
       players = PLAYERS_DEFAULT.map(p => ({ ...p, rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING }));
       fbSet('players', players);
     }
-    if (_appReady) { recalcAllRatings(); refreshCurrentPage(); }
+    if (_appReady && !_sessionActive()) { recalcAllRatings(); refreshCurrentPage(); }
   });
 
   onValue(dbRef('matches'), snap => {
     const val = snap.val();
     matches = val && Array.isArray(val) ? val : [];
-    if (_appReady) { recalcAllRatings(); refreshCurrentPage(); }
+    if (_appReady && !_sessionActive()) { recalcAllRatings(); refreshCurrentPage(); }
   });
 
   onValue(dbRef('sessionHistory'), snap => {
     const val = snap.val();
     sessionHistory = val && Array.isArray(val) ? val : [];
-    if (_appReady) refreshCurrentPage();
+    if (_appReady && !_sessionActive()) refreshCurrentPage();
   });
 
   onValue(dbRef('session'), snap => {
     const val = snap.val();
-    // Only sync from remote if no active session is running locally
-    if (!session || !session.matches || session.done) {
+    if (!_sessionActive()) {
       session = val || null;
       lsSet('bs_session', session);
       if (_appReady) refreshCurrentPage();
     }
   });
+}
+
+// True while a session is running and not yet completed
+function _sessionActive() {
+  return !!(session && session.matches && !session.done);
 }
 
 let _currentPage = 'rank';
@@ -1059,11 +1062,12 @@ window.confirmEndSession = function() {
   `);
 };
 
-window.endSession = function() {
+window.endSession = async function() {
   session = null;
-  saveAll();
+  await saveAll();
   closeModalForce();
   _selectedPlayers = new Set(players.map(p => p.id));
+  recalcAllRatings();
   renderSessionSetup();
 };
 
