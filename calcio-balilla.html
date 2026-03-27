@@ -407,13 +407,12 @@ function startRealtimeSync() {
 
   onValue(dbRef('session'), snap => {
     const val = snap.val();
-    // Only update local session if we don't have an active one in progress
-    // (avoid overwriting local session mid-game from another device)
+    // Only sync from remote if no active session is running locally
     if (!session || !session.matches || session.done) {
       session = val || null;
       lsSet('bs_session', session);
+      if (_appReady) refreshCurrentPage();
     }
-    if (_appReady) refreshCurrentPage();
   });
 }
 
@@ -980,8 +979,8 @@ function renderActiveSession() {
     <div class="card" style="text-align:center;padding:32px 20px;">
       <div style="font-size:48px;margin-bottom:12px;">🏆</div>
       <h2 style="margin-bottom:8px;">Sessione completata!</h2>
-      <div style="color:var(--muted);font-size:13px;margin-bottom:20px;">${total} partite giocate</div>
-      <button class="btn btn-primary btn-full" onclick="endSession()">nuova sessione</button>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px;">${total} partite giocate · ottima serata</div>
+      <button class="btn btn-primary btn-full" style="font-size:15px;padding:16px;" onclick="endSession()">chiudi →</button>
     </div>
     `;
   }
@@ -1018,7 +1017,7 @@ window.changeScore = function(team, delta) {
   document.getElementById('s2').textContent = _scores[1];
 };
 
-window.submitResult = function() {
+window.submitResult = async function() {
   const match = session.matches[session.current];
   if (_scores[0] === 0 && _scores[1] === 0) { toast('inserisci il risultato'); return; }
   match.score1 = _scores[0];
@@ -1041,10 +1040,12 @@ window.submitResult = function() {
   // Avanza
   session.current++;
   if (session.current >= session.matches.length) session.done = true;
-  saveAll();
-  toast('risultato salvato!');
+
   _scores = [0, 0];
+  // Render subito con stato locale, poi salva in background
   renderActiveSession();
+  toast('risultato salvato!');
+  await saveAll();
 };
 
 window.confirmEndSession = function() {
