@@ -358,10 +358,23 @@ async function fbSet(path, val) {
   try { await set(dbRef(path), val); } catch(e) { console.error('fb write error', e); }
 }
 
-async function saveAll() {
-  // Save active session to localStorage as backup
+// Save session state locally only (fast, synchronous, no Firebase interference)
+function saveSession() {
   lsSet('bs_session', session);
-  // Write to Firebase
+}
+
+// Push stats to Firebase — fire and forget, never block UI
+function saveStats() {
+  lsSet('bs_session', session);
+  fbSet('players', players);
+  fbSet('matches', matches);
+  fbSet('sessionHistory', sessionHistory);
+  fbSet('session', session);
+}
+
+// Full save (used outside active session)
+async function saveAll() {
+  lsSet('bs_session', session);
   await Promise.all([
     fbSet('players', players),
     fbSet('matches', matches),
@@ -875,10 +888,10 @@ window.startSession = function() {
   const matchList = generateSession(presentIds, _numMatches);
   const sid = 'ses_' + Date.now();
   session = { id: sid, presentIds, numMatches: _numMatches, goalTarget: _goalTarget, matches: matchList, current: 0, done: false, ts: Date.now() };
-  // Register in history
   sessionHistory.push({ id: sid, ts: session.ts, label: 'Sessione', matchIds: [] });
-  saveAll();
+  saveSession();
   renderActiveSession();
+  saveStats();
 };
 
 function renderActiveSession() {
@@ -1020,35 +1033,37 @@ window.changeScore = function(team, delta) {
   document.getElementById('s2').textContent = _scores[1];
 };
 
-window.submitResult = async function() {
+window.submitResult = function() {
   const match = session.matches[session.current];
   if (_scores[0] === 0 && _scores[1] === 0) { toast('inserisci il risultato'); return; }
+
+  // Stamp result on session match
   match.score1 = _scores[0];
   match.score2 = _scores[1];
   match.done = true;
   match.ts = Date.now();
   match.sessionId = session.id;
-
   const mid = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
   match.id = mid;
 
-  // Salva partita globale
+  // Update global stats in memory
   matches.push({ ...match });
   updateRatings(match);
-
-  // Aggiorna sessionHistory
   const sh = sessionHistory.find(s => s.id === session.id);
   if (sh) sh.matchIds.push(mid);
 
-  // Avanza
+  // Advance session pointer
   session.current++;
   if (session.current >= session.matches.length) session.done = true;
-
   _scores = [0, 0];
-  // Render subito con stato locale, poi salva in background
+
+  // Save session locally (sync) then render immediately
+  saveSession();
   renderActiveSession();
   toast('risultato salvato!');
-  await saveAll();
+
+  // Push stats to Firebase in background — no await, no interference
+  saveStats();
 };
 
 window.confirmEndSession = function() {
@@ -1129,10 +1144,11 @@ window.saveEditMatch = function(idx) {
     { id: get('edit-team2-1-id'), role: get('edit-team2-1-role') },
   ];
   match.resting = get('edit-resting') || null;
-  saveAll();
+  saveSession();
   closeModalForce();
   renderActiveSession();
   toast('formazione aggiornata');
+  saveStats();
 };
 
 // ===================== RENDER: HISTORY =====================
