@@ -227,7 +227,10 @@ select option { background: var(--surface2); }
   <div class="page active" id="page-rank">
     <div class="head-bar">
       <h1>Classifica</h1>
-      <span class="label" id="rank-updated"></span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div id="sync-dot" style="width:7px;height:7px;border-radius:50%;background:var(--green);"></div>
+        <span class="label" id="rank-updated"></span>
+      </div>
     </div>
     <div id="rank-list"></div>
     <div class="card" style="background: var(--surface2);">
@@ -299,7 +302,34 @@ select option { background: var(--surface2); }
   <div id="modal-box"></div>
 </div>
 
-<script>
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay" style="position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div style="font-family:var(--font-head);font-size:52px;font-weight:800;letter-spacing:.02em;color:var(--accent);">BALILLA</div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite;"></div>
+    <span id="loading-msg" style="font-size:12px;color:var(--muted);">Connessione...</span>
+  </div>
+  <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}</style>
+</div>
+
+<script type="module">
+// ===================== FIREBASE SETUP =====================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBL6WZafe3c_SnVG1ZXv1gAzeVh_u3c5OU",
+  authDomain: "balilla-stats.firebaseapp.com",
+  databaseURL: "https://balilla-stats-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "balilla-stats",
+  storageBucket: "balilla-stats.firebasestorage.app",
+  messagingSenderId: "808354995800",
+  appId: "1:808354995800:web:1085d8a1ba6851db8ab42d"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
 // ===================== DATA =====================
 const PLAYERS_DEFAULT = [
   { id: 'ale', name: 'Alessandro', color: '#e8ff47' },
@@ -311,15 +341,153 @@ const PLAYERS_DEFAULT = [
 const K = 32;
 const INIT_RATING = 1500;
 
-function load(key, def) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } }
-function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+let players = [];
+let matches = [];
+let session = null;
+let sessionHistory = [];
+let _appReady = false;
 
-let players = load('bs_players', PLAYERS_DEFAULT.map(p => ({ ...p, rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING })));
-let matches = load('bs_matches', []);
-let session = load('bs_session', null);
-let sessionHistory = load('bs_session_history', []); // [{id, ts, label, matchIds:[]}]
+// Local session cache (so active session survives page reload even offline)
+function lsGet(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 
-function saveAll() { save('bs_players', players); save('bs_matches', matches); save('bs_session', session); save('bs_session_history', sessionHistory); }
+// ===================== FIREBASE SYNC =====================
+function dbRef(path) { return ref(db, path); }
+
+async function fbSet(path, val) {
+  try { await set(dbRef(path), val); } catch(e) { console.error('fb write error', e); }
+}
+
+async function saveAll() {
+  // Save active session to localStorage as backup
+  lsSet('bs_session', session);
+  // Write to Firebase
+  await Promise.all([
+    fbSet('players', players),
+    fbSet('matches', matches),
+    fbSet('sessionHistory', sessionHistory),
+    fbSet('session', session),
+  ]);
+}
+
+// Show loading overlay
+function showLoading(msg) {
+  document.getElementById('loading-overlay').style.display = 'flex';
+  document.getElementById('loading-msg').textContent = msg || 'Connessione...';
+}
+function hideLoading() {
+  document.getElementById('loading-overlay').style.display = 'none';
+}
+
+// Listen for realtime changes from Firebase
+function startRealtimeSync() {
+  onValue(dbRef('players'), snap => {
+    const val = snap.val();
+    if (val && Array.isArray(val)) {
+      players = val;
+    } else if (!val) {
+      // First time: seed default players
+      players = PLAYERS_DEFAULT.map(p => ({ ...p, rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING }));
+      fbSet('players', players);
+    }
+    if (_appReady) { recalcAllRatings(); refreshCurrentPage(); }
+  });
+
+  onValue(dbRef('matches'), snap => {
+    const val = snap.val();
+    matches = val && Array.isArray(val) ? val : [];
+    if (_appReady) { recalcAllRatings(); refreshCurrentPage(); }
+  });
+
+  onValue(dbRef('sessionHistory'), snap => {
+    const val = snap.val();
+    sessionHistory = val && Array.isArray(val) ? val : [];
+    if (_appReady) refreshCurrentPage();
+  });
+
+  onValue(dbRef('session'), snap => {
+    const val = snap.val();
+    // Only update local session if we don't have an active one in progress
+    // (avoid overwriting local session mid-game from another device)
+    if (!session || !session.matches || session.done) {
+      session = val || null;
+      lsSet('bs_session', session);
+    }
+    if (_appReady) refreshCurrentPage();
+  });
+}
+
+let _currentPage = 'rank';
+function refreshCurrentPage() {
+  if (_currentPage === 'rank') renderRank();
+  else if (_currentPage === 'session') renderSession();
+  else if (_currentPage === 'history') renderHistory();
+  else if (_currentPage === 'players') renderPlayers();
+  // free match doesn't need refresh from remote
+}
+
+// Boot: load initial data then start listening
+async function boot() {
+  showLoading('Connessione a Firebase...');
+  try {
+    // Try to get session from localStorage first (for continuity)
+    const localSession = lsGet('bs_session', null);
+
+    const [playersSnap, matchesSnap, sessionHistorySnap, sessionSnap] = await Promise.all([
+      get(dbRef('players')),
+      get(dbRef('matches')),
+      get(dbRef('sessionHistory')),
+      get(dbRef('session')),
+    ]);
+
+    const fbPlayers = playersSnap.val();
+    const fbMatches = matchesSnap.val();
+    const fbSessionHistory = sessionHistorySnap.val();
+    const fbSession = sessionSnap.val();
+
+    if (fbPlayers && Array.isArray(fbPlayers)) {
+      players = fbPlayers;
+    } else {
+      players = PLAYERS_DEFAULT.map(p => ({ ...p, rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING }));
+      await fbSet('players', players);
+    }
+
+    matches = fbMatches && Array.isArray(fbMatches) ? fbMatches : [];
+    sessionHistory = fbSessionHistory && Array.isArray(fbSessionHistory) ? fbSessionHistory : [];
+
+    // If a local session is in progress and FB has nothing or same, prefer local
+    if (localSession && localSession.matches && !localSession.done) {
+      session = localSession;
+      await fbSet('session', session);
+    } else {
+      session = fbSession || null;
+    }
+
+    recalcAllRatings();
+    _selectedPlayers = new Set(players.map(p => p.id));
+
+    hideLoading();
+    _appReady = true;
+    renderRank();
+
+    // Start listening for changes from other devices
+    startRealtimeSync();
+
+  } catch(e) {
+    console.error('Boot error', e);
+    // Fallback to localStorage if Firebase fails
+    players = lsGet('bs_players', PLAYERS_DEFAULT.map(p => ({ ...p, rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING })));
+    matches = lsGet('bs_matches', []);
+    sessionHistory = lsGet('bs_session_history', []);
+    session = lsGet('bs_session', null);
+    recalcAllRatings();
+    _selectedPlayers = new Set(players.map(p => p.id));
+    hideLoading();
+    _appReady = true;
+    renderRank();
+    toast('⚠️ offline — dati locali');
+  }
+}
 
 function getPlayer(id) { return players.find(p => p.id === id) || { id, name: '?', color: '#666', rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING }; }
 
@@ -424,6 +592,7 @@ function getCombinations(arr, k) {
 
 // ===================== UI UTILS =====================
 function showPage(name) {
+  _currentPage = name;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
@@ -625,7 +794,7 @@ function renderSessionSetup() {
   setGoalTarget(10);
 }
 
-let _selectedPlayers = new Set(players.map(p => p.id));
+let _selectedPlayers = new Set();
 let _numMatches = 6;
 let _goalTarget = 10;
 
@@ -1380,8 +1549,7 @@ function renderPlayers() {
 }
 
 // ===================== INIT =====================
-recalcAllRatings();
-renderRank();
+boot();
 </script>
 </body>
 </html>
