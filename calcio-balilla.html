@@ -891,7 +891,6 @@ window.startSession = function() {
   sessionHistory.push({ id: sid, ts: session.ts, label: 'Sessione', matchIds: [] });
   saveSession();
   renderActiveSession();
-  saveStats();
 };
 
 function renderActiveSession() {
@@ -995,8 +994,10 @@ function renderActiveSession() {
     <div class="card" style="text-align:center;padding:32px 20px;">
       <div style="font-size:48px;margin-bottom:12px;">🏆</div>
       <h2 style="margin-bottom:8px;">Sessione completata!</h2>
-      <div style="color:var(--muted);font-size:13px;margin-bottom:20px;">${total} partite giocate · ottima serata</div>
-      <button class="btn btn-primary btn-full" style="font-size:15px;padding:16px;" onclick="endSession()">chiudi →</button>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px;">${total} partite giocate</div>
+      <button class="btn btn-primary btn-full" id="close-session-btn" style="font-size:15px;padding:16px;" onclick="closeSession()">
+        salva e chiudi →
+      </button>
     </div>
     `;
   }
@@ -1037,7 +1038,6 @@ window.submitResult = function() {
   const match = session.matches[session.current];
   if (_scores[0] === 0 && _scores[1] === 0) { toast('inserisci il risultato'); return; }
 
-  // Stamp result on session match
   match.score1 = _scores[0];
   match.score2 = _scores[1];
   match.done = true;
@@ -1046,24 +1046,35 @@ window.submitResult = function() {
   const mid = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
   match.id = mid;
 
-  // Update global stats in memory
   matches.push({ ...match });
   updateRatings(match);
   const sh = sessionHistory.find(s => s.id === session.id);
   if (sh) sh.matchIds.push(mid);
 
-  // Advance session pointer
   session.current++;
   if (session.current >= session.matches.length) session.done = true;
   _scores = [0, 0];
 
-  // Save session locally (sync) then render immediately
+  // Solo localStorage, zero Firebase
   saveSession();
   renderActiveSession();
-  toast('risultato salvato!');
+};
 
-  // Push stats to Firebase in background — no await, no interference
-  saveStats();
+window.closeSession = async function() {
+  const btn = document.getElementById('close-session-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'salvataggio...'; }
+  session = null;
+  lsSet('bs_session', null);
+  try {
+    await saveAll();
+    toast('sessione salvata!');
+  } catch(e) {
+    toast('⚠️ errore salvataggio — riprova');
+    if (btn) { btn.disabled = false; btn.textContent = 'salva e chiudi →'; }
+    return;
+  }
+  _selectedPlayers = new Set(players.map(p => p.id));
+  renderSessionSetup();
 };
 
 window.confirmEndSession = function() {
@@ -1071,20 +1082,21 @@ window.confirmEndSession = function() {
     <h2 style="margin-bottom:12px;">Termina sessione?</h2>
     <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Le partite giocate finora verranno comunque salvate.</p>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-danger" style="flex:1;" onclick="endSession()">termina</button>
+      <button class="btn btn-danger" style="flex:1;" onclick="abortSession()">termina</button>
       <button class="btn btn-secondary" style="flex:1;" onclick="closeModalForce()">annulla</button>
     </div>
   `);
 };
 
-window.endSession = async function() {
-  session = null;
-  await saveAll();
+window.abortSession = async function() {
   closeModalForce();
+  session = null;
+  lsSet('bs_session', null);
+  await saveAll();
   _selectedPlayers = new Set(players.map(p => p.id));
-  recalcAllRatings();
   renderSessionSetup();
 };
+
 
 window.editMatch = function(idx) {
   const match = session.matches[idx];
