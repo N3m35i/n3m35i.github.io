@@ -245,6 +245,11 @@ select option { background: var(--surface2); }
     <div id="session-active" style="display:none;flex-direction:column;gap:16px;"></div>
   </div>
 
+  <!-- PAGE: PARTITA LIBERA -->
+  <div class="page" id="page-free">
+    <div id="free-content" style="display:flex;flex-direction:column;gap:16px;"></div>
+  </div>
+
   <!-- PAGE: STORICO -->
   <div class="page" id="page-history">
     <div class="head-bar">
@@ -273,6 +278,10 @@ select option { background: var(--surface2); }
   <button class="nav-btn" onclick="showPage('session')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
     sessione
+  </button>
+  <button class="nav-btn" onclick="showPage('free')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+    libera
   </button>
   <button class="nav-btn" onclick="showPage('history')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -308,10 +317,11 @@ function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); 
 let players = load('bs_players', PLAYERS_DEFAULT.map(p => ({ ...p, rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING })));
 let matches = load('bs_matches', []);
 let session = load('bs_session', null);
+let sessionHistory = load('bs_session_history', []); // [{id, ts, label, matchIds:[]}]
 
-function saveAll() { save('bs_players', players); save('bs_matches', matches); save('bs_session', session); }
+function saveAll() { save('bs_players', players); save('bs_matches', matches); save('bs_session', session); save('bs_session_history', sessionHistory); }
 
-function getPlayer(id) { return players.find(p => p.id === id); }
+function getPlayer(id) { return players.find(p => p.id === id) || { id, name: '?', color: '#666', rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING }; }
 
 // ===================== ELO =====================
 function expectedScore(rA, rB) { return 1 / (1 + Math.pow(10, (rB - rA) / 400)); }
@@ -417,9 +427,10 @@ function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
-  document.querySelectorAll('.nav-btn')[['rank','session','history','players'].indexOf(name)].classList.add('active');
+  document.querySelectorAll('.nav-btn')[['rank','session','free','history','players'].indexOf(name)].classList.add('active');
   if (name === 'rank') renderRank();
   if (name === 'session') renderSession();
+  if (name === 'free') renderFree();
   if (name === 'history') renderHistory();
   if (name === 'players') renderPlayers();
 }
@@ -657,7 +668,10 @@ window.startSession = function() {
   const presentIds = [..._selectedPlayers];
   if (presentIds.length < 4) { toast('servono almeno 4 giocatori'); return; }
   const matchList = generateSession(presentIds, _numMatches, _goalTarget);
-  session = { presentIds, numMatches: _numMatches, goalTarget: _goalTarget, matches: matchList, current: 0, done: false, ts: Date.now() };
+  const sid = 'ses_' + Date.now();
+  session = { id: sid, presentIds, numMatches: _numMatches, goalTarget: _goalTarget, matches: matchList, current: 0, done: false, ts: Date.now() };
+  // Register in history
+  sessionHistory.push({ id: sid, ts: session.ts, label: 'Sessione', matchIds: [] });
   saveAll();
   renderActiveSession();
 };
@@ -808,10 +822,18 @@ window.submitResult = function() {
   match.score2 = _scores[1];
   match.done = true;
   match.ts = Date.now();
+  match.sessionId = session.id;
+
+  const mid = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+  match.id = mid;
 
   // Salva partita globale
   matches.push({ ...match });
   updateRatings(match);
+
+  // Aggiorna sessionHistory
+  const sh = sessionHistory.find(s => s.id === session.id);
+  if (sh) sh.matchIds.push(mid);
 
   // Avanza
   session.current++;
@@ -910,55 +932,319 @@ function renderHistory() {
   const el = document.getElementById('history-list');
   document.getElementById('history-count').textContent = matches.length + ' partite';
 
-  if (matches.length === 0) {
+  if (matches.length === 0 && sessionHistory.length === 0) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>Nessuna partita ancora</div>';
     return;
   }
 
-  const reversed = [...matches].reverse();
+  // Group matches by sessionId, fallback bucket for legacy matches without sessionId
+  const grouped = {};
+  matches.forEach(m => {
+    const sid = m.sessionId || '__legacy__';
+    if (!grouped[sid]) grouped[sid] = [];
+    grouped[sid].push(m);
+  });
+
+  // Build list of sessions to show (from sessionHistory + any legacy bucket)
+  const sessionEntries = [...sessionHistory].reverse();
   let html = '';
-  reversed.forEach((m, i) => {
+
+  // Legacy matches (no sessionId)
+  if (grouped['__legacy__'] && grouped['__legacy__'].length > 0) {
+    html += renderSessionGroup({ id: '__legacy__', label: 'Partite precedenti', ts: 0 }, grouped['__legacy__'], false);
+  }
+
+  sessionEntries.forEach(sh => {
+    const sessionMatches = (grouped[sh.id] || []);
+    if (sessionMatches.length === 0 && !sh.matchIds?.length) return;
+    html += renderSessionGroup(sh, sessionMatches, true);
+  });
+
+  el.innerHTML = html || '<div class="empty"><div class="empty-icon">📋</div>Nessuna partita ancora</div>';
+}
+
+function renderSessionGroup(sh, sessionMatches, canDelete) {
+  const label = sh.label || 'Sessione';
+  const dateStr = sh.ts ? formatDate(sh.ts) : '';
+  const matchCount = sessionMatches.length;
+
+  let matchHtml = '';
+  [...sessionMatches].reverse().forEach(m => {
     const t1 = m.team1.map(p => ({ ...getPlayer(p.id), role: p.role }));
     const t2 = m.team2.map(p => ({ ...getPlayer(p.id), role: p.role }));
     const w1 = m.score1 > m.score2;
     const w2 = m.score2 > m.score1;
+    const typeTag = m.isFree
+      ? `<span style="font-size:9px;background:var(--orange)20;color:var(--orange);padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.06em;">libera</span>`
+      : '';
 
-    html += `
-    <div class="match-card" style="margin-bottom:8px;">
-      <div class="match-header">
-        <span class="label">${formatDate(m.ts || Date.now())}</span>
-        <span style="font-size:10px;color:var(--muted);">gol</span>
+    matchHtml += `
+    <div style="border-top:1px solid var(--border);padding:10px 14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-size:10px;color:var(--muted);">${m.ts ? formatDate(m.ts) : ''}</span>
+        ${typeTag}
       </div>
-      <div class="match-body">
-        <div class="team-col">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
-            <div style="width:6px;height:6px;border-radius:50%;background:var(--red);"></div>
-            <span style="font-size:10px;color:var(--muted);">rossa</span>
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;"></div>
+            <span class="team-names">${t1.map(p => `${p.name} <span class="role-tag ${p.role==='P'?'role-p':'role-a'}">${p.role}</span>`).join(' · ')}</span>
           </div>
-          <div class="team-names">
-            ${t1.map(p => `${p.name} <span class="role-tag ${p.role === 'P' ? 'role-p' : 'role-a'}">${p.role}</span>`).join('<br>')}
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0;"></div>
+            <span class="team-names">${t2.map(p => `${p.name} <span class="role-tag ${p.role==='P'?'role-p':'role-a'}">${p.role}</span>`).join(' · ')}</span>
           </div>
         </div>
-        <div style="text-align:center;min-width:80px;">
-          <span class="team-score ${w1 ? 'winner' : ''}">${m.score1}</span>
+        <div style="text-align:center;min-width:72px;flex-shrink:0;">
+          <span class="team-score ${w1?'winner':''}" style="font-size:32px;">${m.score1}</span>
           <span class="vs">—</span>
-          <span class="team-score ${w2 ? 'winner' : ''}">${m.score2}</span>
-        </div>
-        <div class="team-col" style="text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-bottom:2px;">
-            <span style="font-size:10px;color:var(--muted);">blu</span>
-            <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);"></div>
-          </div>
-          <div class="team-names">
-            ${t2.map(p => `${p.name} <span class="role-tag ${p.role === 'P' ? 'role-p' : 'role-a'}">${p.role}</span>`).join('<br>')}
-          </div>
+          <span class="team-score ${w2?'winner':''}" style="font-size:32px;">${m.score2}</span>
         </div>
       </div>
     </div>`;
   });
 
-  el.innerHTML = html;
+  return `
+  <div class="match-card" style="margin-bottom:12px;">
+    <div class="match-header" style="display:flex;align-items:center;gap:8px;">
+      <div style="flex:1;">
+        <span style="font-family:var(--font-head);font-size:18px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;">${label}</span>
+        ${dateStr ? `<span style="font-size:10px;color:var(--muted);margin-left:8px;">${dateStr}</span>` : ''}
+      </div>
+      <span style="font-size:11px;color:var(--muted);">${matchCount} ${matchCount===1?'partita':'partite'}</span>
+      ${canDelete && sh.id !== '__legacy__' ? `<button class="btn btn-sm" onclick="confirmDeleteSession('${sh.id}')" style="padding:4px 10px;color:var(--red);border:1px solid var(--red)30;background:transparent;font-size:10px;">elimina</button>` : ''}
+    </div>
+    ${matchHtml || '<div style="padding:12px 14px;font-size:12px;color:var(--muted);">Nessuna partita completata</div>'}
+  </div>`;
 }
+
+window.confirmDeleteSession = function(sid) {
+  const sh = sessionHistory.find(s => s.id === sid);
+  const cnt = matches.filter(m => m.sessionId === sid).length;
+  openModal(`
+    <h2 style="margin-bottom:12px;">Elimina sessione?</h2>
+    <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:8px;">
+      Verranno eliminate <strong style="color:var(--text);">${cnt} partite</strong> e i rating verranno ricalcolati da zero.
+    </p>
+    <p style="color:var(--red);font-size:12px;margin-bottom:20px;">Questa azione non è reversibile.</p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-danger" style="flex:1;" onclick="deleteSession('${sid}')">elimina</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="closeModalForce()">annulla</button>
+    </div>
+  `);
+};
+
+window.deleteSession = function(sid) {
+  matches = matches.filter(m => m.sessionId !== sid);
+  sessionHistory = sessionHistory.filter(s => s.id !== sid);
+  recalcAllRatings();
+  saveAll();
+  closeModalForce();
+  renderHistory();
+  renderRank();
+  toast('sessione eliminata');
+};
+
+// ===================== FREE MATCH =====================
+let _freeState = 'setup'; // 'setup' | 'score'
+let _freeTeam1 = [];
+let _freeTeam2 = [];
+let _freeScores = [0, 0];
+let _freeGoalTarget = 10;
+
+function renderFree() {
+  if (_freeState === 'score') {
+    renderFreeScore();
+  } else {
+    renderFreeSetup();
+  }
+}
+
+function renderFreeSetup() {
+  _freeState = 'setup';
+  const el = document.getElementById('free-content');
+
+  const playerOpts = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+  el.innerHTML = `
+    <div class="head-bar">
+      <h1>Partita libera</h1>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
+        <span class="label">squadra rossa</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:8px;">
+          <select id="ft1p0" style="flex:1;">${playerOpts}</select>
+          <select id="ft1r0" style="width:70px;"><option value="P">POR</option><option value="A">ATT</option></select>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <select id="ft1p1" style="flex:1;">${playerOpts}</select>
+          <select id="ft1r1" style="width:70px;"><option value="A">ATT</option><option value="P">POR</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
+        <span class="label">squadra blu</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:8px;">
+          <select id="ft2p0" style="flex:1;">${playerOpts}</select>
+          <select id="ft2r0" style="width:70px;"><option value="P">POR</option><option value="A">ATT</option></select>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <select id="ft2p1" style="flex:1;">${playerOpts}</select>
+          <select id="ft2r1" style="width:70px;"><option value="A">ATT</option><option value="P">POR</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="label" style="margin-bottom:10px;">gol per partita</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${[5,7,10].map(n => `<button class="btn ${n===_freeGoalTarget?'btn-primary':'btn-secondary'}" id="fg-${n}" onclick="setFreeGoal(${n})">${n} gol</button>`).join('')}
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="startFreeMatch()" style="font-size:15px;padding:16px;">
+      inizia partita →
+    </button>
+  `;
+
+  // Pre-select different players by default
+  if (players.length >= 4) {
+    document.getElementById('ft1p0').value = players[0].id;
+    document.getElementById('ft1p1').value = players[1].id;
+    document.getElementById('ft2p0').value = players[2].id;
+    document.getElementById('ft2p1').value = players[3].id;
+  }
+}
+
+window.setFreeGoal = function(n) {
+  _freeGoalTarget = n;
+  document.querySelectorAll('[id^="fg-"]').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-secondary'); });
+  const el = document.getElementById('fg-' + n);
+  if (el) { el.classList.remove('btn-secondary'); el.classList.add('btn-primary'); }
+};
+
+window.startFreeMatch = function() {
+  const get = id => document.getElementById(id)?.value;
+  _freeTeam1 = [
+    { id: get('ft1p0'), role: get('ft1r0') },
+    { id: get('ft1p1'), role: get('ft1r1') },
+  ];
+  _freeTeam2 = [
+    { id: get('ft2p0'), role: get('ft2r0') },
+    { id: get('ft2p1'), role: get('ft2r1') },
+  ];
+  // Validate: no duplicate players
+  const all = [_freeTeam1[0].id, _freeTeam1[1].id, _freeTeam2[0].id, _freeTeam2[1].id];
+  if (new Set(all).size < 4) { toast('ogni giocatore deve apparire una sola volta'); return; }
+  _freeScores = [0, 0];
+  _freeState = 'score';
+  renderFreeScore();
+};
+
+function renderFreeScore() {
+  const el = document.getElementById('free-content');
+  const t1 = _freeTeam1.map(p => ({ ...getPlayer(p.id), role: p.role }));
+  const t2 = _freeTeam2.map(p => ({ ...getPlayer(p.id), role: p.role }));
+
+  el.innerHTML = `
+    <div class="head-bar">
+      <h1>Partita libera</h1>
+      <button class="btn btn-secondary btn-sm" onclick="cancelFreeMatch()">annulla</button>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div class="card-sm" style="flex:1;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
+          <span class="label">rossa</span>
+        </div>
+        ${t1.map(p => `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            ${avatar(p, 28)}
+            <span style="font-size:13px;">${p.name}</span>
+            <span class="role-tag ${p.role==='P'?'role-p':'role-a'}" style="margin-left:auto;">${p.role==='P'?'POR':'ATT'}</span>
+          </div>`).join('')}
+      </div>
+      <div class="card-sm" style="flex:1;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
+          <span class="label">blu</span>
+        </div>
+        ${t2.map(p => `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            ${avatar(p, 28)}
+            <span style="font-size:13px;">${p.name}</span>
+            <span class="role-tag ${p.role==='P'?'role-p':'role-a'}" style="margin-left:auto;">${p.role==='P'?'POR':'ATT'}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="label" style="margin-top:4px;">risultato (primo a ${_freeGoalTarget})</div>
+    <div class="score-box">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
+        <button class="score-btn" onclick="changeFreeScore(0,-1)">−</button>
+        <div class="score-num" id="fs1" style="color:var(--red);">${_freeScores[0]}</div>
+        <button class="score-btn" onclick="changeFreeScore(0,1)">+</button>
+      </div>
+      <span class="vs" style="flex:1;text-align:center;">vs</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="score-btn" onclick="changeFreeScore(1,-1)">−</button>
+        <div class="score-num" id="fs2" style="color:var(--blue);">${_freeScores[1]}</div>
+        <button class="score-btn" onclick="changeFreeScore(1,1)">+</button>
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="submitFreeMatch()" style="font-size:15px;padding:16px;">
+      conferma risultato →
+    </button>
+  `;
+}
+
+window.changeFreeScore = function(team, delta) {
+  _freeScores[team] = Math.max(0, _freeScores[team] + delta);
+  document.getElementById('fs1').textContent = _freeScores[0];
+  document.getElementById('fs2').textContent = _freeScores[1];
+};
+
+window.cancelFreeMatch = function() {
+  _freeState = 'setup';
+  renderFreeSetup();
+};
+
+window.submitFreeMatch = function() {
+  if (_freeScores[0] === 0 && _freeScores[1] === 0) { toast('inserisci il risultato'); return; }
+
+  const sid = 'free_' + Date.now();
+  const mid = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+
+  const match = {
+    id: mid,
+    sessionId: sid,
+    isFree: true,
+    team1: _freeTeam1,
+    team2: _freeTeam2,
+    score1: _freeScores[0],
+    score2: _freeScores[1],
+    ts: Date.now(),
+    done: true,
+  };
+
+  matches.push(match);
+  updateRatings(match);
+
+  sessionHistory.push({ id: sid, ts: match.ts, label: 'Partita libera', matchIds: [mid] });
+
+  saveAll();
+  toast('partita salvata!');
+  _freeState = 'setup';
+  _freeScores = [0, 0];
+  renderFreeSetup();
+};
 
 // ===================== RENDER: PLAYERS =====================
 const PLAYER_COLORS = ['#e8ff47','#4e9fff','#ff4e4e','#ff8c47','#47ff8a','#c47eff','#ff47c4','#47ffe8','#ffb347','#ffffff'];
