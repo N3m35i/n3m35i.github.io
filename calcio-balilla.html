@@ -67,6 +67,7 @@ h3 { font-family: var(--font-head); font-size: 24px; font-weight: 600; letter-sp
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 12px 20px; border-radius: var(--r-sm); border: none; cursor: pointer;
   font-family: var(--font-mono); font-size: 13px; font-weight: 500; transition: all .15s;
+  touch-action: manipulation;
 }
 .btn-primary { background: var(--accent); color: #0a0a0a; }
 .btn-primary:hover { background: var(--accent-dim); }
@@ -1117,8 +1118,8 @@ function renderActiveSession() {
       <div style="display:flex;gap:10px;margin-bottom:14px;">
         <div class="card-sm" style="flex:1;">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-            <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
-            <span class="label">squadra rossa</span>
+            <span style="font-family:var(--font-head);font-size:16px;font-weight:800;color:var(--text);">A</span>
+            <span class="label">squadra a</span>
           </div>
           ${t1.map(p => `
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -1130,8 +1131,8 @@ function renderActiveSession() {
         </div>
         <div class="card-sm" style="flex:1;">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-            <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
-            <span class="label">squadra blu</span>
+            <span style="font-family:var(--font-head);font-size:16px;font-weight:800;color:var(--text);">B</span>
+            <span class="label">squadra b</span>
           </div>
           ${t2.map(p => `
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -1154,24 +1155,26 @@ function renderActiveSession() {
         return `<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">riposa: ${names}</div>`;
       })()}
 
-      <div class="label" style="margin-bottom:8px;">risultato (primo a ${session.goalTarget})</div>
-      <div class="score-box" style="margin-bottom:14px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
-          <button class="score-btn" onclick="changeScore(0,-1)">−</button>
-          <div class="score-num" id="s1" style="color:var(--red);">0</div>
-          <button class="score-btn" onclick="changeScore(0,1)">+</button>
-        </div>
-        <span class="vs" style="flex:1;text-align:center;">vs</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button class="score-btn" onclick="changeScore(1,-1)">−</button>
-          <div class="score-num" id="s2" style="color:var(--blue);">0</div>
-          <button class="score-btn" onclick="changeScore(1,1)">+</button>
-          <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
+      <div class="label" style="margin-bottom:8px;">chi ha vinto? (a ${session.goalTarget} gol)</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="btn btn-secondary" id="win-a" style="flex:1;font-family:var(--font-head);font-size:20px;font-weight:800;touch-action:manipulation;" onclick="setWinner(0)">
+          🏆 A
+        </button>
+        <button class="btn btn-secondary" id="win-b" style="flex:1;font-family:var(--font-head);font-size:20px;font-weight:800;touch-action:manipulation;" onclick="setWinner(1)">
+          🏆 B
+        </button>
+      </div>
+
+      <div id="loser-score-section" style="display:none;margin-bottom:14px;">
+        <div class="label" style="margin-bottom:8px;" id="loser-label">gol della squadra perdente</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;">
+          <button class="score-btn" style="touch-action:manipulation;" onclick="changeScore(-1)">−</button>
+          <div class="score-num" id="loser-num" style="min-width:52px;text-align:center;">0</div>
+          <button class="score-btn" style="touch-action:manipulation;" onclick="changeScore(1)">+</button>
         </div>
       </div>
 
-      <button class="btn btn-primary btn-full" onclick="submitResult()" style="font-size:15px;padding:16px;">
+      <button class="btn btn-primary btn-full" id="confirm-result-btn" onclick="submitResult()" style="font-size:15px;padding:16px;display:none;">
         conferma risultato →
       </button>
     </div>
@@ -1194,17 +1197,36 @@ function renderActiveSession() {
 }
 
 let _scores = [0, 0];
+let _winnerSide = -1; // 0=A won, 1=B won, -1=not set
 
-window.changeScore = function(team, delta) {
-  _scores[team] = Math.max(0, _scores[team] + delta);
-  document.getElementById('s1').textContent = _scores[0];
-  document.getElementById('s2').textContent = _scores[1];
+window.setWinner = function(side) {
+  _winnerSide = side;
+  _scores = [0, 0];
+  _scores[side] = session.goalTarget;
+  // Highlight winner button
+  document.getElementById('win-a').classList.toggle('btn-primary', side === 0);
+  document.getElementById('win-a').classList.toggle('btn-secondary', side !== 0);
+  document.getElementById('win-b').classList.toggle('btn-primary', side === 1);
+  document.getElementById('win-b').classList.toggle('btn-secondary', side !== 1);
+  // Show loser score section
+  const loserLabel = side === 0 ? 'gol della squadra B (perdente)' : 'gol della squadra A (perdente)';
+  document.getElementById('loser-label').textContent = loserLabel;
+  document.getElementById('loser-score-section').style.display = 'block';
+  document.getElementById('loser-num').textContent = 0;
+  document.getElementById('confirm-result-btn').style.display = 'block';
+};
+
+window.changeScore = function(delta) {
+  if (_winnerSide === -1) return;
+  const loserSide = 1 - _winnerSide;
+  _scores[loserSide] = Math.max(0, Math.min(session.goalTarget - 1, _scores[loserSide] + delta));
+  document.getElementById('loser-num').textContent = _scores[loserSide];
 };
 
 window.submitResult = function() {
-  const match = session.matches[session.current];
-  if (_scores[0] === 0 && _scores[1] === 0) { toast('inserisci il risultato'); return; }
+  if (_winnerSide === -1) { toast('seleziona chi ha vinto'); return; }
 
+  const match = session.matches[session.current];
   match.score1 = _scores[0];
   match.score2 = _scores[1];
   match.done = true;
@@ -1221,20 +1243,90 @@ window.submitResult = function() {
   session.current++;
   const moreToCome = session.current < session.numMatches;
 
+  _winnerSide = -1;
+  _scores = [0, 0];
+
   if (moreToCome) {
-    // Winner stays — generate next match from this result
     const winnerSide = match.score1 > match.score2 ? 'team1' : 'team2';
     const next = generateNextMatch(match, winnerSide);
-    if (next) session.matches.push({ ...next, score1: null, score2: null, done: false });
-    else session.done = true;
+    if (next) {
+      const nextMatch = { ...next, score1: null, score2: null, done: false };
+      session.matches.push(nextMatch);
+      saveSession();
+      if (session.presentIds.length > 4) {
+        showIncomingTeamPopup(nextMatch, winnerSide);
+        return;
+      }
+    } else {
+      session.done = true;
+    }
   } else {
     session.done = true;
   }
 
-  _scores = [0, 0];
   saveSession();
   renderActiveSession();
 };
+
+// ===================== INCOMING TEAM POPUP =====================
+let _pendingNextMatchIdx = -1;
+
+function showIncomingTeamPopup(nextMatch, winnerSide) {
+  _pendingNextMatchIdx = session.matches.length - 1;
+  // The incoming team is always team2 (winner is always placed in team1 by generateNextMatch)
+  let incomingTeam = [...nextMatch.team2];
+  const winnerLabel = winnerSide === 'team1' ? 'A' : 'B';
+
+  const renderIncoming = () => {
+    const cur = session.matches[_pendingNextMatchIdx];
+    incomingTeam = [...cur.team2];
+    openModal(`
+      <div style="margin-bottom:6px;">
+        <span class="label">squadra ${winnerLabel} vince e resta</span>
+      </div>
+      <h2 style="margin-bottom:16px;">nuova squadra entrante</h2>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:16px;">
+        ${incomingTeam.map((p, i) => {
+          const pl = getPlayer(p.id);
+          return `
+          <div style="display:flex;align-items:center;gap:10px;${i > 0 ? 'margin-top:10px;' : ''}">
+            ${avatar(pl, 36)}
+            <span style="font-family:var(--font-head);font-size:20px;font-weight:700;flex:1;">${pl.name}</span>
+            <span class="role-tag ${p.role==='P'?'role-p':'role-a'}" style="font-size:13px;padding:4px 10px;">
+              ${p.role === 'P' ? 'POR' : 'ATT'}
+            </span>
+          </div>`;
+        }).join('')}
+        <div style="margin-top:14px;text-align:center;">
+          <button class="btn btn-secondary btn-sm" onclick="swapIncomingRoles()" style="gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+            scambia ruoli
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full" style="font-size:15px;padding:16px;" onclick="confirmIncomingTeam()">
+        conferma e inizia partita →
+      </button>
+    `);
+  };
+
+  window.swapIncomingRoles = function() {
+    const cur = session.matches[_pendingNextMatchIdx];
+    cur.team2 = [
+      { id: cur.team2[0].id, role: cur.team2[1].role },
+      { id: cur.team2[1].id, role: cur.team2[0].role },
+    ];
+    saveSession();
+    renderIncoming();
+  };
+
+  window.confirmIncomingTeam = function() {
+    closeModalForce();
+    renderActiveSession();
+  };
+
+  renderIncoming();
+}
 
 window.closeSession = async function() {
   const btn = document.getElementById('close-session-btn');
@@ -1278,17 +1370,16 @@ window.editMatch = function(idx) {
   const match = session.matches[idx];
   const allIds = [...session.presentIds];
 
-  const buildTeamEditor = (teamKey, label, color) => {
+  const buildTeamEditor = (teamKey, label) => {
     const team = match[teamKey];
     return `
       <div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-          <div style="width:8px;height:8px;border-radius:50%;background:var(--${color});"></div>
+        <div style="margin-bottom:8px;">
           <span class="label">${label}</span>
         </div>
         ${team.map((p, i) => `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-            <select id="edit-${teamKey}-${i}-id" onchange="updateEditRoles()" style="flex:1;">
+            <select id="edit-${teamKey}-${i}-id" style="flex:1;">
               ${allIds.map(id => `<option value="${id}" ${id === p.id ? 'selected' : ''}>${getPlayer(id).name}</option>`).join('')}
             </select>
             <select id="edit-${teamKey}-${i}-role" style="width:70px;">
@@ -1303,9 +1394,9 @@ window.editMatch = function(idx) {
 
   openModal(`
     <h2 style="margin-bottom:16px;">Modifica partita ${idx + 1}</h2>
-    ${buildTeamEditor('team1', 'squadra rossa', 'red')}
+    ${buildTeamEditor('team1', 'squadra A')}
     <div class="divider" style="margin:12px 0;"></div>
-    ${buildTeamEditor('team2', 'squadra blu', 'blue')}
+    ${buildTeamEditor('team2', 'squadra B')}
     <div style="margin-top:12px;">
       <div class="label" style="margin-bottom:8px;">chi riposa</div>
       <select id="edit-resting" style="width:100%;">
@@ -1399,11 +1490,11 @@ function renderSessionGroup(sh, sessionMatches, canDelete) {
       <div style="display:flex;align-items:center;gap:8px;">
         <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
-            <div style="width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;"></div>
+            <span style="font-family:var(--font-head);font-size:12px;font-weight:700;color:var(--accent);min-width:12px;">A</span>
             <span class="team-names">${t1.map(p => `${p.name} <span class="role-tag ${p.role==='P'?'role-p':'role-a'}">${p.role}</span>`).join(' · ')}</span>
           </div>
           <div style="display:flex;align-items:center;gap:4px;">
-            <div style="width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0;"></div>
+            <span style="font-family:var(--font-head);font-size:12px;font-weight:700;color:var(--blue);min-width:12px;">B</span>
             <span class="team-names">${t2.map(p => `${p.name} <span class="role-tag ${p.role==='P'?'role-p':'role-a'}">${p.role}</span>`).join(' · ')}</span>
           </div>
         </div>
@@ -1484,8 +1575,8 @@ function renderFreeSetup() {
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-        <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
-        <span class="label">squadra rossa</span>
+        <span style="font-family:var(--font-head);font-size:16px;font-weight:800;color:var(--text);">A</span>
+        <span class="label">squadra a</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;gap:8px;">
@@ -1500,8 +1591,8 @@ function renderFreeSetup() {
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-        <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
-        <span class="label">squadra blu</span>
+        <span style="font-family:var(--font-head);font-size:16px;font-weight:800;color:var(--text);">B</span>
+        <span class="label">squadra b</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;gap:8px;">
@@ -1572,8 +1663,8 @@ function renderFreeScore() {
     <div style="display:flex;gap:10px;">
       <div class="card-sm" style="flex:1;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-          <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
-          <span class="label">rossa</span>
+          <span style="font-family:var(--font-head);font-size:16px;font-weight:800;color:var(--text);">A</span>
+          <span class="label">squadra a</span>
         </div>
         ${t1.map(p => `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -1584,8 +1675,8 @@ function renderFreeScore() {
       </div>
       <div class="card-sm" style="flex:1;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-          <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
-          <span class="label">blu</span>
+          <span style="font-family:var(--font-head);font-size:16px;font-weight:800;color:var(--text);">B</span>
+          <span class="label">squadra b</span>
         </div>
         ${t2.map(p => `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -1595,41 +1686,57 @@ function renderFreeScore() {
           </div>`).join('')}
       </div>
     </div>
-    <div class="label" style="margin-top:4px;">risultato (primo a ${_freeGoalTarget})</div>
-    <div class="score-box">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div style="width:8px;height:8px;border-radius:50%;background:var(--red);"></div>
-        <button class="score-btn" onclick="changeFreeScore(0,-1)">−</button>
-        <div class="score-num" id="fs1" style="color:var(--red);">${_freeScores[0]}</div>
-        <button class="score-btn" onclick="changeFreeScore(0,1)">+</button>
-      </div>
-      <span class="vs" style="flex:1;text-align:center;">vs</span>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button class="score-btn" onclick="changeFreeScore(1,-1)">−</button>
-        <div class="score-num" id="fs2" style="color:var(--blue);">${_freeScores[1]}</div>
-        <button class="score-btn" onclick="changeFreeScore(1,1)">+</button>
-        <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);"></div>
+    <div class="label" style="margin-top:4px;">chi ha vinto? (a ${_freeGoalTarget} gol)</div>
+    <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:12px;">
+      <button class="btn btn-secondary" id="fwin-a" style="flex:1;font-family:var(--font-head);font-size:20px;font-weight:800;touch-action:manipulation;" onclick="setFreeWinner(0)">🏆 A</button>
+      <button class="btn btn-secondary" id="fwin-b" style="flex:1;font-family:var(--font-head);font-size:20px;font-weight:800;touch-action:manipulation;" onclick="setFreeWinner(1)">🏆 B</button>
+    </div>
+    <div id="free-loser-section" style="display:none;margin-bottom:12px;">
+      <div class="label" id="free-loser-label" style="margin-bottom:8px;">gol della squadra perdente</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;">
+        <button class="score-btn" style="touch-action:manipulation;" onclick="changeFreeScore(-1)">−</button>
+        <div class="score-num" id="free-loser-num" style="min-width:52px;text-align:center;">0</div>
+        <button class="score-btn" style="touch-action:manipulation;" onclick="changeFreeScore(1)">+</button>
       </div>
     </div>
-    <button class="btn btn-primary btn-full" onclick="submitFreeMatch()" style="font-size:15px;padding:16px;">
+    <button class="btn btn-primary btn-full" id="free-confirm-btn" style="font-size:15px;padding:16px;display:none;" onclick="submitFreeMatch()">
       conferma risultato →
     </button>
   `;
 }
 
-window.changeFreeScore = function(team, delta) {
-  _freeScores[team] = Math.max(0, _freeScores[team] + delta);
-  document.getElementById('fs1').textContent = _freeScores[0];
-  document.getElementById('fs2').textContent = _freeScores[1];
+let _freeWinnerSide = -1;
+
+window.setFreeWinner = function(side) {
+  _freeWinnerSide = side;
+  _freeScores = [0, 0];
+  _freeScores[side] = _freeGoalTarget;
+  document.getElementById('fwin-a').classList.toggle('btn-primary', side === 0);
+  document.getElementById('fwin-a').classList.toggle('btn-secondary', side !== 0);
+  document.getElementById('fwin-b').classList.toggle('btn-primary', side === 1);
+  document.getElementById('fwin-b').classList.toggle('btn-secondary', side !== 1);
+  document.getElementById('free-loser-label').textContent = side === 0 ? 'gol della squadra B (perdente)' : 'gol della squadra A (perdente)';
+  document.getElementById('free-loser-section').style.display = 'block';
+  document.getElementById('free-loser-num').textContent = 0;
+  document.getElementById('free-confirm-btn').style.display = 'block';
+};
+
+window.changeFreeScore = function(delta) {
+  if (_freeWinnerSide === -1) return;
+  const loserSide = 1 - _freeWinnerSide;
+  _freeScores[loserSide] = Math.max(0, Math.min(_freeGoalTarget - 1, _freeScores[loserSide] + delta));
+  document.getElementById('free-loser-num').textContent = _freeScores[loserSide];
 };
 
 window.cancelFreeMatch = function() {
+  _freeWinnerSide = -1;
+  _freeScores = [0, 0];
   _freeState = 'setup';
   renderFreeSetup();
 };
 
 window.submitFreeMatch = function() {
-  if (_freeScores[0] === 0 && _freeScores[1] === 0) { toast('inserisci il risultato'); return; }
+  if (_freeWinnerSide === -1) { toast('seleziona chi ha vinto'); return; }
 
   const sid = 'free_' + Date.now();
   const mid = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
@@ -1651,10 +1758,11 @@ window.submitFreeMatch = function() {
 
   sessionHistory.push({ id: sid, ts: match.ts, label: 'Partita libera', matchIds: [mid] });
 
-  saveAll();
+  saveStats();
+  _freeWinnerSide = -1;
+  _freeScores = [0, 0];
   toast('partita salvata!');
   _freeState = 'setup';
-  _freeScores = [0, 0];
   renderFreeSetup();
 };
 
