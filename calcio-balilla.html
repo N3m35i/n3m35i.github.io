@@ -739,12 +739,23 @@ function generateNextMatch(prevMatch, winnerSide) {
 
   // n=5: winner stays, one loser swaps with resting player
   if (n === 5) {
-    const restingId = prevMatch.resting;
+    const restingId = Array.isArray(prevMatch.resting)
+      ? prevMatch.resting[0]
+      : prevMatch.resting;
+
+    // If resting is null/missing, pick whoever from presentIds is not in either team
+    const playingIds = [...prevMatch.team1, ...prevMatch.team2].map(p => p.id);
+    const actualRestingId = restingId || session.presentIds.find(id => !playingIds.includes(id));
+
+    if (!actualRestingId) {
+      // Fallback: can't determine resting, keep same teams
+      return { team1: prevMatch.team1, team2: prevMatch.team2, resting: null };
+    }
+
     const rc = session.restCounts || {};
-    // Swap out the loser who has rested least (most time on pitch)
     const loserToSwap = loserTeam.slice().sort((a,b) => (rc[a.id]||0) - (rc[b.id]||0))[0];
     const newChallenger = fixRoles(loserTeam.map(p =>
-      p.id === loserToSwap.id ? { id: restingId, role: p.role } : p
+      p.id === loserToSwap.id ? { id: actualRestingId, role: p.role } : p
     ));
     session.restCounts = { ...rc, [loserToSwap.id]: (rc[loserToSwap.id]||0) + 1 };
     return { team1: winnerTeam, team2: newChallenger, resting: loserToSwap.id };
@@ -1201,6 +1212,7 @@ function renderActiveSession() {
 
   el.innerHTML = html;
   _scores = [0, 0];
+  _winnerSide = -1;
 }
 
 let _scores = [0, 0];
@@ -1421,15 +1433,35 @@ window.editMatch = function(idx) {
 window.saveEditMatch = function(idx) {
   const match = session.matches[idx];
   const get = id => document.getElementById(id)?.value;
-  match.team1 = [
+
+  const t1 = [
     { id: get('edit-team1-0-id'), role: get('edit-team1-0-role') },
     { id: get('edit-team1-1-id'), role: get('edit-team1-1-role') },
   ];
-  match.team2 = [
+  const t2 = [
     { id: get('edit-team2-0-id'), role: get('edit-team2-0-role') },
     { id: get('edit-team2-1-id'), role: get('edit-team2-1-role') },
   ];
-  match.resting = get('edit-resting') || null;
+  // Validate no empty or duplicate ids
+  const ids = [t1[0].id, t1[1].id, t2[0].id, t2[1].id];
+  if (ids.some(id => !id) || new Set(ids).size < 4) {
+    toast('ogni giocatore deve essere diverso'); return;
+  }
+
+  match.team1 = t1;
+  match.team2 = t2;
+
+  // Resting: preserve original array structure if n>5, otherwise single id
+  const restingVal = get('edit-resting') || null;
+  const n = session.presentIds.length;
+  if (n <= 5) {
+    match.resting = restingVal;
+  } else {
+    // For n>5, resting is managed by the engine — don't overwrite with a single id
+    // Only update if it was already a simple value
+    if (!Array.isArray(match.resting)) match.resting = restingVal;
+  }
+
   saveSession();
   closeModalForce();
   renderActiveSession();
