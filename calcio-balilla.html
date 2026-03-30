@@ -620,66 +620,165 @@ function recalcAllRatings() {
   matches.forEach(m => updateRatings(m));
 }
 
-// ===================== TEAM GENERATOR =====================
+// ===================== TEAM GENERATOR V2 =====================
+
+function getCombinations(arr, k) {
+  if (k === 0) return [[]];
+  if (arr.length < k) return [];
+  const [first, ...rest] = arr;
+  return [...getCombinations(rest, k-1).map(c => [first,...c]), ...getCombinations(rest, k)];
+}
+
 function roleOk(id, role) {
   const p = getPlayer(id);
   if (!p.roleFixed || p.roleFixed === 'null') return true;
   return p.roleFixed === role;
 }
 
-function generateTeams(presentIds) {
-  if (presentIds.length < 4) return null;
-  const perms = [];
-  for (let i = 0; i < presentIds.length; i++) {
-    const resting = presentIds[i];
-    const playing = presentIds.filter((_, j) => j !== i);
-    const combos = getCombinations(playing, 2);
-    combos.forEach(t1 => {
-      const t2 = playing.filter(id => !t1.includes(id));
-      const roleAssignments = [
-        [{ id: t1[0], role: 'P' }, { id: t1[1], role: 'A' }, { id: t2[0], role: 'P' }, { id: t2[1], role: 'A' }],
-        [{ id: t1[0], role: 'A' }, { id: t1[1], role: 'P' }, { id: t2[0], role: 'P' }, { id: t2[1], role: 'A' }],
-        [{ id: t1[0], role: 'P' }, { id: t1[1], role: 'A' }, { id: t2[0], role: 'A' }, { id: t2[1], role: 'P' }],
-        [{ id: t1[0], role: 'A' }, { id: t1[1], role: 'P' }, { id: t2[0], role: 'A' }, { id: t2[1], role: 'P' }],
-      ];
-      roleAssignments.forEach(ra => {
-        // Skip if any assignment violates a player's roleFixed
-        if (!ra.every(p => roleOk(p.id, p.role))) return;
-        const team1 = [ra[0], ra[1]];
-        const team2 = [ra[2], ra[3]];
-        const r1 = team1.reduce((s, p) => s + getRoleRating(p.id, p.role), 0) / 2;
-        const r2 = team2.reduce((s, p) => s + getRoleRating(p.id, p.role), 0) / 2;
-        perms.push({ team1, team2, resting, diff: Math.abs(r1 - r2) });
-      });
+// Assign best roles to a pair of players respecting roleFixed
+function assignRolesToPair(ids) {
+  const [a, b] = ids;
+  const opt1 = [{ id: a, role: 'P' }, { id: b, role: 'A' }];
+  const opt2 = [{ id: a, role: 'A' }, { id: b, role: 'P' }];
+  if (roleOk(a,'P') && roleOk(b,'A')) return opt1;
+  if (roleOk(a,'A') && roleOk(b,'P')) return opt2;
+  return opt1; // can't satisfy, user can override
+}
+
+// Try to fix roles within a team by swapping if one violates roleFixed
+function fixRoles(team) {
+  const [p0, p1] = team;
+  if (roleOk(p0.id, p0.role) && roleOk(p1.id, p1.role)) return team;
+  const swapped = [{ id: p0.id, role: p1.role }, { id: p1.id, role: p0.role }];
+  if (roleOk(swapped[0].id, swapped[0].role) && roleOk(swapped[1].id, swapped[1].role)) return swapped;
+  return team;
+}
+
+// Best balanced 2v2 from exactly 4 player ids. Returns {team1, team2, diff}
+function bestMatch4(fourIds) {
+  let best = null, bestDiff = Infinity;
+  getCombinations(fourIds, 2).forEach(t1ids => {
+    const t2ids = fourIds.filter(id => !t1ids.includes(id));
+    const t1 = assignRolesToPair(t1ids);
+    const t2 = assignRolesToPair(t2ids);
+    const r1 = t1.reduce((s,p) => s + getRoleRating(p.id,p.role), 0) / 2;
+    const r2 = t2.reduce((s,p) => s + getRoleRating(p.id,p.role), 0) / 2;
+    const diff = Math.abs(r1 - r2);
+    if (diff < bestDiff) { bestDiff = diff; best = { team1: t1, team2: t2, diff }; }
+  });
+  return best;
+}
+
+// Form n/2 balanced teams (for n>=6 even): sort by rating, pair best with worst
+function formBalancedTeams(ids) {
+  const sorted = [...ids].sort((a,b) => getPlayer(b).rating - getPlayer(a).rating);
+  const teams = [];
+  for (let i = 0; i < sorted.length / 2; i++) {
+    teams.push(assignRolesToPair([sorted[i], sorted[sorted.length - 1 - i]]));
+  }
+  return teams;
+}
+
+// Generate the very first match of a session
+function generateFirstMatch(presentIds) {
+  const n = presentIds.length;
+  if (n < 4) return null;
+
+  if (n === 4) {
+    const m = bestMatch4(presentIds);
+    return { team1: m.team1, team2: m.team2, resting: null };
+  }
+
+  if (n === 5) {
+    let best = null, bestDiff = Infinity;
+    presentIds.forEach(restId => {
+      const playing = presentIds.filter(id => id !== restId);
+      const m = bestMatch4(playing);
+      if (m && m.diff < bestDiff) { bestDiff = m.diff; best = { team1: m.team1, team2: m.team2, resting: restId }; }
     });
+    return best;
   }
-  perms.sort((a, b) => a.diff - b.diff);
-  return perms[0] || null;
+
+  if (n >= 6 && n % 2 === 0) {
+    const teams = formBalancedTeams(presentIds);
+    const restingTeams = teams.slice(2);
+    return {
+      team1: teams[0], team2: teams[1],
+      resting: restingTeams.flatMap(t => t.map(p => p.id)),
+      _restingTeams: restingTeams,
+    };
+  }
+
+  // n >= 7, odd: pick best 4 to play, rest sit
+  let best = null, bestDiff = Infinity;
+  getCombinations(presentIds, 4).forEach(fourIds => {
+    const m = bestMatch4(fourIds);
+    if (m && m.diff < bestDiff) {
+      bestDiff = m.diff;
+      best = { team1: m.team1, team2: m.team2, resting: presentIds.filter(id => !fourIds.includes(id)) };
+    }
+  });
+  return best;
 }
 
-function generateSession(presentIds, numMatches) {
-  const matchList = [];
-  const restCount = {};
-  presentIds.forEach(id => restCount[id] = 0);
+// Generate next match based on previous result. winnerSide: 'team1'|'team2'
+function generateNextMatch(prevMatch, winnerSide) {
+  const n = session.presentIds.length;
+  const winnerTeam = winnerSide === 'team1' ? prevMatch.team1 : prevMatch.team2;
+  const loserTeam  = winnerSide === 'team1' ? prevMatch.team2 : prevMatch.team1;
 
-  for (let i = 0; i < numMatches; i++) {
-    const sorted = [...presentIds].sort((a, b) => (restCount[a] || 0) - (restCount[b] || 0));
-    const gen = generateTeams(sorted);
-    if (!gen) { toast('impossibile generare squadre con i vincoli di ruolo attuali'); break; }
-    matchList.push({ team1: gen.team1, team2: gen.team2, resting: gen.resting, score1: null, score2: null, done: false });
-    restCount[gen.resting] = (restCount[gen.resting] || 0) + 1;
+  // n=4: same teams every match
+  if (n === 4) {
+    return { team1: prevMatch.team1, team2: prevMatch.team2, resting: null };
   }
-  return matchList;
-}
 
-function getCombinations(arr, k) {
-  if (k === 0) return [[]];
-  if (arr.length < k) return [];
-  const [first, ...rest] = arr;
-  return [
-    ...getCombinations(rest, k - 1).map(c => [first, ...c]),
-    ...getCombinations(rest, k)
+  // n=5: winner stays, one loser swaps with resting player
+  if (n === 5) {
+    const restingId = prevMatch.resting;
+    const rc = session.restCounts || {};
+    // Swap out the loser who has rested least (most time on pitch)
+    const loserToSwap = loserTeam.slice().sort((a,b) => (rc[a.id]||0) - (rc[b.id]||0))[0];
+    const newChallenger = fixRoles(loserTeam.map(p =>
+      p.id === loserToSwap.id ? { id: restingId, role: p.role } : p
+    ));
+    session.restCounts = { ...rc, [loserToSwap.id]: (rc[loserToSwap.id]||0) + 1 };
+    return { team1: winnerTeam, team2: newChallenger, resting: loserToSwap.id };
+  }
+
+  // n>=6, even: full team rotation — loser goes to end of pool, first from pool enters
+  if (n >= 6 && n % 2 === 0) {
+    const pool = session.restingTeams || [];
+    const incomingTeam = pool.length > 0 ? pool[0] : loserTeam;
+    const newPool = [...pool.slice(1), loserTeam];
+    session.restingTeams = newPool;
+    return {
+      team1: winnerTeam, team2: incomingTeam,
+      resting: newPool.flatMap(t => t.map(p => p.id)),
+    };
+  }
+
+  // n>=7, odd: loser exits, new team formed from players who were resting last match
+  const prevRestingIds = Array.isArray(prevMatch.resting)
+    ? prevMatch.resting
+    : [prevMatch.resting].filter(Boolean);
+
+  if (prevRestingIds.length < 2) return generateFirstMatch(session.presentIds);
+
+  // Pick the best-balanced pair from prev resting pool
+  let newTeam = null, bestDiff = Infinity;
+  getCombinations(prevRestingIds, 2).forEach(pair => {
+    const t = assignRolesToPair(pair);
+    const r1 = winnerTeam.reduce((s,p) => s + getRoleRating(p.id,p.role), 0) / 2;
+    const r2 = t.reduce((s,p) => s + getRoleRating(p.id,p.role), 0) / 2;
+    const diff = Math.abs(r1 - r2);
+    if (diff < bestDiff) { bestDiff = diff; newTeam = t; }
+  });
+  const newTeamIds = newTeam.map(p => p.id);
+  const newResting = [
+    ...loserTeam.map(p => p.id),
+    ...prevRestingIds.filter(id => !newTeamIds.includes(id)),
   ];
+  return { team1: winnerTeam, team2: newTeam, resting: newResting };
 }
 
 // ===================== UI UTILS =====================
@@ -955,9 +1054,19 @@ window.setGoalTarget = function(n) {
 window.startSession = function() {
   const presentIds = [..._selectedPlayers];
   if (presentIds.length < 4) { toast('servono almeno 4 giocatori'); return; }
-  const matchList = generateSession(presentIds, _numMatches);
+  const first = generateFirstMatch(presentIds);
+  if (!first) { toast('impossibile generare squadre'); return; }
+  const restingTeams = first._restingTeams || null;
+  delete first._restingTeams;
   const sid = 'ses_' + Date.now();
-  session = { id: sid, presentIds, numMatches: _numMatches, goalTarget: _goalTarget, matches: matchList, current: 0, done: false, ts: Date.now() };
+  session = {
+    id: sid, presentIds,
+    numMatches: _numMatches, goalTarget: _goalTarget,
+    matches: [{ ...first, score1: null, score2: null, done: false }],
+    current: 0, done: false, ts: Date.now(),
+    restingTeams, // n>=6 even: resting team pool
+    restCounts: {}, // n=5: tracks who rested
+  };
   sessionHistory.push({ id: sid, ts: session.ts, label: 'Sessione', matchIds: [] });
   saveSession();
   renderActiveSession();
@@ -970,13 +1079,13 @@ function renderActiveSession() {
 
   if (!session || !session.matches) { renderSessionSetup(); return; }
 
-  const total = session.matches.length;
+  const total = session.numMatches;
   const done = session.matches.filter(m => m.done).length;
   const current = session.current;
   const match = session.matches[current];
 
-  const progressDots = session.matches.map((m, i) => {
-    let cls = m.done ? 'done' : i === current ? 'current' : '';
+  const progressDots = Array.from({ length: total }, (_, i) => {
+    const cls = i < done ? 'done' : i === current ? 'current' : '';
     return `<div class="sp-dot ${cls}"></div>`;
   }).join('');
 
@@ -997,7 +1106,6 @@ function renderActiveSession() {
   if (match && !match.done) {
     const t1 = match.team1.map(p => ({ ...getPlayer(p.id), role: p.role }));
     const t2 = match.team2.map(p => ({ ...getPlayer(p.id), role: p.role }));
-    const resting = match.resting ? getPlayer(match.resting) : null;
 
     html += `
     <div class="card">
@@ -1035,7 +1143,16 @@ function renderActiveSession() {
         </div>
       </div>
 
-      ${resting ? `<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">riposa: <span style="color:${resting.color}">${resting.name}</span></div>` : ''}
+      ${(() => {
+        const r = match.resting;
+        if (!r) return '';
+        const restingIds = Array.isArray(r) ? r : [r];
+        const names = restingIds.map(id => {
+          const rp = getPlayer(id);
+          return `<span style="color:${rp.color}">${rp.name}</span>`;
+        }).join(', ');
+        return `<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">riposa: ${names}</div>`;
+      })()}
 
       <div class="label" style="margin-bottom:8px;">risultato (primo a ${session.goalTarget})</div>
       <div class="score-box" style="margin-bottom:14px;">
@@ -1072,26 +1189,6 @@ function renderActiveSession() {
     `;
   }
 
-  // Prossime partite
-  if (!session.done && done < total) {
-    const upcoming = session.matches.slice(current + 1, current + 4).filter(m => !m.done);
-    if (upcoming.length > 0) {
-      html += `<div class="label" style="margin-top:4px;">prossime partite</div>`;
-      upcoming.forEach((m, i) => {
-        const n = current + i + 2;
-        const t1names = m.team1.map(x => getPlayer(x.id)?.name.split(' ')[0]).join(' + ');
-        const t2names = m.team2.map(x => getPlayer(x.id)?.name.split(' ')[0]).join(' + ');
-        html += `
-          <div class="card-sm" style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:11px;color:var(--muted);">#${n}</span>
-            <span style="font-size:12px;flex:1;">${t1names}</span>
-            <span style="font-size:11px;color:var(--muted);">vs</span>
-            <span style="font-size:12px;flex:1;text-align:right;">${t2names}</span>
-          </div>`;
-      });
-    }
-  }
-
   el.innerHTML = html;
   _scores = [0, 0];
 }
@@ -1122,10 +1219,19 @@ window.submitResult = function() {
   if (sh) sh.matchIds.push(mid);
 
   session.current++;
-  if (session.current >= session.matches.length) session.done = true;
-  _scores = [0, 0];
+  const moreToCome = session.current < session.numMatches;
 
-  // Solo localStorage, zero Firebase
+  if (moreToCome) {
+    // Winner stays — generate next match from this result
+    const winnerSide = match.score1 > match.score2 ? 'team1' : 'team2';
+    const next = generateNextMatch(match, winnerSide);
+    if (next) session.matches.push({ ...next, score1: null, score2: null, done: false });
+    else session.done = true;
+  } else {
+    session.done = true;
+  }
+
+  _scores = [0, 0];
   saveSession();
   renderActiveSession();
 };
