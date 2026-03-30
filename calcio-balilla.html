@@ -1122,7 +1122,35 @@ function renderActiveSession() {
     </div>
   `;
 
-  if (match && !match.done) {
+  if (session.pendingConfirm) {
+    const pc = session.pendingConfirm;
+    const nm = session.matches[pc.matchIdx];
+    if (nm) {
+      const inTeam = nm.team2.map(p => ({ ...getPlayer(p.id), role: p.role }));
+      html += `
+      <div class="card" style="border-color:var(--accent)40;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div>
+            <span class="label">squadra ${pc.winnerLabel} ha vinto</span>
+            <h2 style="margin-top:4px;">squadra entrante</h2>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="swapPendingRoles()" style="gap:5px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+            scambia ruoli
+          </button>
+        </div>
+        ${inTeam.map(p => `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            ${avatar(p, 36)}
+            <span style="font-family:var(--font-head);font-size:22px;font-weight:700;flex:1;">${p.name}</span>
+            <span class="role-tag ${p.role==='P'?'role-p':'role-a'}" style="font-size:13px;padding:4px 10px;">${p.role==='P'?'POR':'ATT'}</span>
+          </div>`).join('')}
+        <button class="btn btn-primary btn-full" style="font-size:15px;padding:16px;margin-top:8px;" onclick="confirmIncoming()">
+          conferma e inizia →
+        </button>
+      </div>`;
+    }
+  } else if (match && !match.done) {
     const t1 = match.team1.map(p => ({ ...getPlayer(p.id), role: p.role }));
     const t2 = match.team2.map(p => ({ ...getPlayer(p.id), role: p.role }));
 
@@ -1271,10 +1299,9 @@ window.submitResult = function() {
     if (next) {
       const nextMatch = { ...next, score1: null, score2: null, done: false };
       session.matches.push(nextMatch);
-      saveSession();
+      // If n>4, store pending confirmation so renderActiveSession shows the confirm card
       if (session.presentIds.length > 4) {
-        showIncomingTeamPopup(nextMatch, winnerSide);
-        return;
+        session.pendingConfirm = { matchIdx: session.matches.length - 1, winnerLabel: winnerSide === 'team1' ? 'A' : 'B' };
       }
     } else {
       session.done = true;
@@ -1287,65 +1314,23 @@ window.submitResult = function() {
   renderActiveSession();
 };
 
-// ===================== INCOMING TEAM POPUP =====================
-let _pendingNextMatchIdx = -1;
+window.swapPendingRoles = function() {
+  const idx = session.pendingConfirm?.matchIdx;
+  if (idx == null) return;
+  const m = session.matches[idx];
+  m.team2 = [
+    { id: m.team2[0].id, role: m.team2[1].role },
+    { id: m.team2[1].id, role: m.team2[0].role },
+  ];
+  saveSession();
+  renderActiveSession();
+};
 
-function showIncomingTeamPopup(nextMatch, winnerSide) {
-  _pendingNextMatchIdx = session.matches.length - 1;
-  // The incoming team is always team2 (winner is always placed in team1 by generateNextMatch)
-  let incomingTeam = [...nextMatch.team2];
-  const winnerLabel = winnerSide === 'team1' ? 'A' : 'B';
-
-  const renderIncoming = () => {
-    const cur = session.matches[_pendingNextMatchIdx];
-    incomingTeam = [...cur.team2];
-    openModal(`
-      <div style="margin-bottom:6px;">
-        <span class="label">squadra ${winnerLabel} vince e resta</span>
-      </div>
-      <h2 style="margin-bottom:16px;">nuova squadra entrante</h2>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:16px;">
-        ${incomingTeam.map((p, i) => {
-          const pl = getPlayer(p.id);
-          return `
-          <div style="display:flex;align-items:center;gap:10px;${i > 0 ? 'margin-top:10px;' : ''}">
-            ${avatar(pl, 36)}
-            <span style="font-family:var(--font-head);font-size:20px;font-weight:700;flex:1;">${pl.name}</span>
-            <span class="role-tag ${p.role==='P'?'role-p':'role-a'}" style="font-size:13px;padding:4px 10px;">
-              ${p.role === 'P' ? 'POR' : 'ATT'}
-            </span>
-          </div>`;
-        }).join('')}
-        <div style="margin-top:14px;text-align:center;">
-          <button class="btn btn-secondary btn-sm" onclick="swapIncomingRoles()" style="gap:6px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
-            scambia ruoli
-          </button>
-        </div>
-      </div>
-      <button class="btn btn-primary btn-full" style="font-size:15px;padding:16px;" onclick="confirmIncomingTeam()">
-        conferma e inizia partita →
-      </button>
-    `);
-  };
-
-  window.swapIncomingRoles = function() {
-    const cur = session.matches[_pendingNextMatchIdx];
-    cur.team2 = [
-      { id: cur.team2[0].id, role: cur.team2[1].role },
-      { id: cur.team2[1].id, role: cur.team2[0].role },
-    ];
-    saveSession();
-    renderIncoming();
-  };
-
-  window.confirmIncomingTeam = function() {
-    closeModalForce();
-    renderActiveSession();
-  };
-
-  renderIncoming();
-}
+window.confirmIncoming = function() {
+  session.pendingConfirm = null;
+  saveSession();
+  renderActiveSession();
+};
 
 window.closeSession = async function() {
   const btn = document.getElementById('close-session-btn');
