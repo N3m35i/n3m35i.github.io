@@ -372,6 +372,7 @@ let matches = [];
 let session = null;
 let sessionHistory = [];
 let _appReady = false;
+let _silenceListeners = false; // block remote re-renders during critical writes
 
 // Local session cache (so active session survives page reload even offline)
 function lsGet(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } }
@@ -420,7 +421,7 @@ function hideLoading() {
 
 // Listen for realtime changes from Firebase
 function startRealtimeSync() {
-  onValue(dbRef('players'), snap => {
+  onValue(dbRef('players'), snap => { if (_silenceListeners) return;
     const val = snap.val();
     if (val && Array.isArray(val)) {
       players = val;
@@ -431,19 +432,19 @@ function startRealtimeSync() {
     if (_appReady && !_sessionActive()) { recalcAllRatings(); refreshCurrentPage(); }
   });
 
-  onValue(dbRef('matches'), snap => {
+  onValue(dbRef('matches'), snap => { if (_silenceListeners) return;
     const val = snap.val();
     matches = val && Array.isArray(val) ? val : [];
     if (_appReady && !_sessionActive()) { recalcAllRatings(); refreshCurrentPage(); }
   });
 
-  onValue(dbRef('sessionHistory'), snap => {
+  onValue(dbRef('sessionHistory'), snap => { if (_silenceListeners) return;
     const val = snap.val();
     sessionHistory = val && Array.isArray(val) ? val : [];
     if (_appReady && !_sessionActive()) refreshCurrentPage();
   });
 
-  onValue(dbRef('session'), snap => {
+  onValue(dbRef('session'), snap => { if (_silenceListeners) return;
     const val = snap.val();
     if (!_sessionActive()) {
       session = val || null;
@@ -879,16 +880,16 @@ function renderRank() {
 
 window.setPlayerRole = async function(id, role) {
   const p = getPlayer(id);
-  p.roleFixed = role; // null | 'P' | 'A'
-  // Update toggle UI immediately
+  p.roleFixed = role;
   ['null','P','A'].forEach(r => {
     const el = document.getElementById('rf-' + r);
     if (el) { el.classList.remove('btn-primary'); el.classList.add('btn-secondary'); }
   });
   const active = document.getElementById('rf-' + role);
   if (active) { active.classList.remove('btn-secondary'); active.classList.add('btn-primary'); }
-  await saveAll();
   renderPlayers();
+  _silenceListeners = true;
+  try { await saveAll(); } finally { _silenceListeners = false; }
 };
 
 // ===================== RENDER: PLAYER DETAIL =====================
@@ -1537,15 +1538,20 @@ window.confirmDeleteSession = function(sid) {
   `);
 };
 
-window.deleteSession = function(sid) {
+window.deleteSession = async function(sid) {
+  closeModalForce();
   matches = matches.filter(m => m.sessionId !== sid);
   sessionHistory = sessionHistory.filter(s => s.id !== sid);
   recalcAllRatings();
-  saveAll();
-  closeModalForce();
   renderHistory();
   renderRank();
   toast('sessione eliminata');
+  _silenceListeners = true;
+  try {
+    await saveAll();
+  } finally {
+    _silenceListeners = false;
+  }
 };
 
 // ===================== FREE MATCH =====================
@@ -1808,7 +1814,7 @@ window.selectColor = function(color) {
   });
 };
 
-window.addPlayer = function() {
+window.addPlayer = async function() {
   const nameEl = document.getElementById('new-player-name');
   const name = nameEl?.value?.trim();
   if (!name) { toast('inserisci un nome'); return; }
@@ -1816,10 +1822,11 @@ window.addPlayer = function() {
   const id = 'p' + Date.now();
   players.push({ id, name, color: _newPlayerColor, rating: INIT_RATING, ratingP: INIT_RATING, ratingA: INIT_RATING });
   _selectedPlayers.add(id);
-  saveAll();
   closeModalForce();
   renderPlayers();
   toast(name + ' aggiunto!');
+  _silenceListeners = true;
+  try { await saveAll(); } finally { _silenceListeners = false; }
 };
 
 window.showRemovePlayer = function(id) {
@@ -1843,13 +1850,14 @@ window.showRemovePlayer = function(id) {
   `);
 };
 
-window.removePlayer = function(id) {
+window.removePlayer = async function(id) {
   players = players.filter(p => p.id !== id);
   _selectedPlayers.delete(id);
-  saveAll();
   closeModalForce();
   renderPlayers();
   toast('giocatore rimosso');
+  _silenceListeners = true;
+  try { await saveAll(); } finally { _silenceListeners = false; }
 };
 
 function renderPlayers() {
