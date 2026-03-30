@@ -1379,9 +1379,10 @@ window.abortSession = async function() {
   closeModalForce();
   session = null;
   lsSet('bs_session', null);
-  await saveAll();
   _selectedPlayers = new Set(players.map(p => p.id));
   renderSessionSetup();
+  _silenceListeners = true;
+  try { await saveAll(); } finally { _silenceListeners = false; }
 };
 
 
@@ -1466,7 +1467,6 @@ window.saveEditMatch = function(idx) {
   closeModalForce();
   renderActiveSession();
   toast('formazione aggiornata');
-  saveStats();
 };
 
 // ===================== RENDER: HISTORY =====================
