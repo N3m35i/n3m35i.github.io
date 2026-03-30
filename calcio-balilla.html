@@ -236,7 +236,10 @@ select option { background: var(--surface2); }
     </div>
     <div id="rank-list"></div>
     <div class="card" style="background: var(--surface2);">
-      <div class="label" style="margin-bottom: 8px;">Come funziona lo skill score</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="label">Come funziona lo skill score</div>
+        <button class="btn btn-sm" onclick="confirmResetAll()" style="color:var(--red);border:1px solid var(--red)30;background:transparent;font-size:9px;">reset globale</button>
+      </div>
       <div style="font-size: 11px; color: var(--muted); line-height: 1.7;">
         Rating ELO adattato: ogni vittoria/sconfitta aggiorna il punteggio in base alla forza degli avversari.
         Portieri e attaccanti hanno pesi diversi. Il divario di gol amplifica o riduce il delta.
@@ -949,7 +952,10 @@ window.showPlayerDetail = function(id) {
         ${rf==='null' ? 'Il generatore assegna il ruolo liberamente.' : rf==='P' ? '⚠️ Il generatore assegnerà sempre portiere.' : '⚠️ Il generatore assegnerà sempre attaccante.'}
       </div>
     </div>
-    <button class="btn btn-secondary btn-full" onclick="closeModalForce()">chiudi</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary btn-full" onclick="closeModalForce()">chiudi</button>
+      <button class="btn btn-sm" onclick="confirmResetPlayer('${id}')" style="color:var(--red);border:1px solid var(--red)30;background:transparent;white-space:nowrap;">reset stats</button>
+    </div>
   `);
 };
 
@@ -1554,7 +1560,71 @@ window.deleteSession = async function(sid) {
   }
 };
 
-// ===================== FREE MATCH =====================
+// ===================== RESET FUNCTIONS =====================
+window.confirmResetPlayer = function(id) {
+  const p = getPlayer(id);
+  const cnt = matches.filter(m => [...m.team1, ...m.team2].some(x => x.id === id)).length;
+  openModal(`
+    <h2 style="margin-bottom:12px;">Reset ${p.name}?</h2>
+    <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:8px;">
+      Verranno eliminate <strong style="color:var(--text);">${cnt} partite</strong> in cui ${p.name} ha giocato.
+      I rating di tutti i giocatori coinvolti verranno ricalcolati.
+    </p>
+    <p style="color:var(--red);font-size:12px;margin-bottom:20px;">Questa azione non è reversibile.</p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-danger" style="flex:1;" onclick="resetPlayer('${id}')">reset</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="closeModalForce()">annulla</button>
+    </div>
+  `);
+};
+
+window.resetPlayer = async function(id) {
+  closeModalForce();
+  // Remove all matches involving this player
+  const removedIds = new Set(
+    matches.filter(m => [...m.team1, ...m.team2].some(x => x.id === id)).map(m => m.id)
+  );
+  matches = matches.filter(m => !removedIds.has(m.id));
+  // Clean sessionHistory: remove matchIds that no longer exist
+  sessionHistory = sessionHistory.map(sh => ({
+    ...sh, matchIds: (sh.matchIds || []).filter(mid => !removedIds.has(mid))
+  })).filter(sh => sh.matchIds.length > 0 || sh.label === 'Partita libera');
+  recalcAllRatings();
+  renderRank();
+  renderHistory();
+  toast(`stats di ${getPlayer(id).name} azzerate`);
+  _silenceListeners = true;
+  try { await saveAll(); } finally { _silenceListeners = false; }
+};
+
+window.confirmResetAll = function() {
+  openModal(`
+    <h2 style="margin-bottom:12px;">Reset globale?</h2>
+    <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:8px;">
+      Verranno eliminate <strong style="color:var(--text);">tutte le partite</strong> e tutti i rating torneranno a 1500.
+      I profili giocatori e le impostazioni resteranno invariati.
+    </p>
+    <p style="color:var(--red);font-size:12px;margin-bottom:20px;">Questa azione non è reversibile.</p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-danger" style="flex:1;" onclick="resetAll()">azzera tutto</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="closeModalForce()">annulla</button>
+    </div>
+  `);
+};
+
+window.resetAll = async function() {
+  closeModalForce();
+  matches = [];
+  sessionHistory = [];
+  session = null;
+  lsSet('bs_session', null);
+  recalcAllRatings();
+  renderRank();
+  renderHistory();
+  toast('reset completato');
+  _silenceListeners = true;
+  try { await saveAll(); } finally { _silenceListeners = false; }
+};
 let _freeState = 'setup'; // 'setup' | 'score'
 let _freeTeam1 = [];
 let _freeTeam2 = [];
