@@ -1375,19 +1375,37 @@ window.editMatch = function(idx) {
   const match = session.matches[idx];
   const allIds = [...session.presentIds];
 
+  // Swap roles within a team and re-render the modal
+  window.swapEditRoles = function(teamKey) {
+    const r0 = document.getElementById(`edit-${teamKey}-0-role`).value;
+    const r1 = document.getElementById(`edit-${teamKey}-1-role`).value;
+    document.getElementById(`edit-${teamKey}-0-role`).value = r1;
+    document.getElementById(`edit-${teamKey}-1-role`).value = r0;
+    // Update visible role tags
+    document.getElementById(`edit-${teamKey}-0-tag`).textContent = r1 === 'P' ? 'POR' : 'ATT';
+    document.getElementById(`edit-${teamKey}-0-tag`).className = `role-tag ${r1 === 'P' ? 'role-p' : 'role-a'}`;
+    document.getElementById(`edit-${teamKey}-1-tag`).textContent = r0 === 'P' ? 'POR' : 'ATT';
+    document.getElementById(`edit-${teamKey}-1-tag`).className = `role-tag ${r0 === 'P' ? 'role-p' : 'role-a'}`;
+  };
+
   const buildTeamEditor = (teamKey, label) => {
     const team = match[teamKey];
     return `
       <div>
-        <div style="margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <span class="label">${label}</span>
+          <button class="btn btn-secondary btn-sm" onclick="swapEditRoles('${teamKey}')" style="gap:5px;font-size:10px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+            scambia ruoli
+          </button>
         </div>
         ${team.map((p, i) => `
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
             <select id="edit-${teamKey}-${i}-id" style="flex:1;">
               ${allIds.map(id => `<option value="${id}" ${id === p.id ? 'selected' : ''}>${getPlayer(id).name}</option>`).join('')}
             </select>
-            <select id="edit-${teamKey}-${i}-role" style="width:70px;">
+            <span id="edit-${teamKey}-${i}-tag" class="role-tag ${p.role === 'P' ? 'role-p' : 'role-a'}" style="font-size:12px;padding:4px 8px;">${p.role === 'P' ? 'POR' : 'ATT'}</span>
+            <select id="edit-${teamKey}-${i}-role" style="display:none;">
               <option value="P" ${p.role === 'P' ? 'selected' : ''}>POR</option>
               <option value="A" ${p.role === 'A' ? 'selected' : ''}>ATT</option>
             </select>
