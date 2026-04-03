@@ -1457,6 +1457,22 @@ async function fbDeleteExpense(id) {
   }
 }
 
+// ---- SHORTCUT QUICK-ADD (URL params) ----
+// Uso: ?key=XXXX&amount=42.50&desc=Supermercato
+const URL_PARAMS   = new URLSearchParams(window.location.search);
+const SHORTCUT_KEY = URL_PARAMS.get('key');
+const SHORTCUT_AMT = URL_PARAMS.get('amount');
+const SHORTCUT_DESC= URL_PARAMS.get('desc') || '';
+
+async function checkShortcutAccess() {
+  if (!SHORTCUT_KEY) return false;
+  try {
+    const snap = await getDoc(doc(db, 'config', 'settings'));
+    if (!snap.exists()) return false;
+    return snap.data().shortcutKey === SHORTCUT_KEY;
+  } catch(e) { return false; }
+}
+
 // ---- INIT ----
 function showLoader(msg) {
   const l = document.getElementById('loader-screen');
@@ -1468,7 +1484,6 @@ function hideLoader() {
 }
 
 function showScreen(name) {
-  // name: 'auth' | 'profile' | 'app'
   document.getElementById('auth-screen').style.display  = name === 'auth'    ? 'flex' : 'none';
   document.getElementById('login-screen').style.display = name === 'profile' ? 'flex' : 'none';
   document.getElementById('app').style.display          = name === 'app'     ? 'flex' : 'none';
@@ -1486,7 +1501,49 @@ async function initData() {
 
   showLoader('Connessione…');
 
-  // Firebase Auth state listener — questo è il punto di verità
+  // ---- Modalità Shortcut (URL key) ----
+  if (SHORTCUT_KEY) {
+    try {
+      await fbLoadUsers();
+      fbListenExpenses();
+      const valid = await checkShortcutAccess();
+      hideLoader();
+      if (valid) {
+        // Usa utente 0 come default per shortcut (il primo profilo = chi ha lo shortcut)
+        // Puoi cambiare questo indice se necessario
+        const snap = await getDoc(doc(db, 'config', 'settings'));
+        const shortcutProfile = snap.data().shortcutProfile ?? 0;
+        state.currentUser = shortcutProfile;
+        state.authUser    = { email: 'shortcut' };
+        // Aggiorna header minimalmente
+        const u = state.users[shortcutProfile] || state.users[0];
+        if (u) {
+          document.getElementById('header-avatar').textContent = userInitial(u.name);
+          document.getElementById('header-name').textContent   = u.name;
+          document.getElementById('home-username').textContent = u.name;
+        }
+        showScreen('app');
+        renderHome(); renderHistory(); renderStats(); renderShopping();
+        // Apri subito il modal precompilato
+        setTimeout(() => {
+          openAddExpense();
+          if (SHORTCUT_AMT) document.getElementById('expense-amount').value = SHORTCUT_AMT;
+          if (SHORTCUT_DESC) document.getElementById('expense-desc').value  = SHORTCUT_DESC;
+        }, 400);
+        return;
+      } else {
+        showToast('⚠️ Chiave shortcut non valida');
+        showScreen('auth');
+        return;
+      }
+    } catch(e) {
+      hideLoader();
+      showScreen('auth');
+      return;
+    }
+  }
+
+  // ---- Flusso normale Firebase Auth ----
   onAuthStateChanged(auth, async (user) => {
     hideLoader();
     if (user) {
@@ -1499,14 +1556,10 @@ async function initData() {
       } catch(e) {
         showToast('⚠️ Errore DB: ' + e.code);
       }
-
-      // Controlla se questa email è già collegata a un profilo
       const savedProfile = await fbGetProfileForEmail(user.email);
       if (savedProfile !== null && state.users[savedProfile]) {
-        // Profilo trovato → vai diretto all'app
         loginAs(savedProfile);
       } else {
-        // Prima volta → mostra scelta profilo
         showScreen('profile');
         renderLoginUsers();
       }
