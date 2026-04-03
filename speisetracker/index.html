@@ -1294,7 +1294,9 @@
 
     <div class="form-group">
       <label class="form-label">Data</label>
-      <input type="date" id="expense-date" style="color:var(--text);color-scheme:dark">
+      <div style="overflow:hidden;border-radius:var(--radius-sm)">
+        <input type="date" id="expense-date" style="color:var(--text);color-scheme:dark">
+      </div>
     </div>
 
     <div class="form-group">
@@ -2431,6 +2433,16 @@ if ('serviceWorker' in navigator) {
   input:focus, textarea:focus, select:focus {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 2px rgba(0,212,255,0.1) !important;
+  }
+
+  input[type="date"] {
+    color-scheme: dark;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    appearance: none;
+    -webkit-appearance: none;
   }
   .debt-row {
     background: rgba(13,13,43,0.7) !important;
