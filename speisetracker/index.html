@@ -398,16 +398,17 @@
   .balance-card::before {
     content: '';
     position: absolute;
-    top: -30px; right: -30px;
-    width: 120px; height: 120px;
+    top: -40px; right: -40px;
+    width: 130px; height: 130px;
     border-radius: 50%;
-    filter: blur(35px);
-    opacity: 0.35;
-    transition: background 0.3s;
+    filter: blur(40px);
+    opacity: 0;
+    transition: background 0.3s, opacity 0.3s;
+    pointer-events: none;
   }
 
-  .balance-card.positive::before { background: var(--green); }
-  .balance-card.negative::before { background: var(--red); }
+  .balance-card.positive::before { background: var(--green); opacity: 0.35; }
+  .balance-card.negative::before { background: var(--red);   opacity: 0.35; }
 
   .balance-label {
     font-size: 10px;
@@ -1713,95 +1714,70 @@ async function saveExpense() {
 // ==================== BALANCE CALCULATION ====================
 
 function calculateBalances() {
-  // Returns map: userId -> net balance (positive = others owe them, negative = they owe)
-  const balances = {}; // [from][to] = amount owed
+  const balances = {};
   state.users.forEach((_, i) => {
     balances[i] = {};
     state.users.forEach((_, j) => { if (i !== j) balances[i][j] = 0; });
   });
 
   state.expenses.forEach(exp => {
-    const { amount, type, payer, participants } = exp;
+    const amount = parseFloat(exp.amount) || 0;
+    const type   = parseInt(exp.type);
+    const payer  = parseInt(exp.payer);
+    // Firestore può restituire i participants come stringhe — forziamo interi
+    const participants = (exp.participants || []).map(p => parseInt(p));
     const parts = participants.length;
-    if (parts === 0) return;
+    if (parts === 0 || amount === 0) return;
 
-    if (type === 0) {
-      // Paid by payer, split equally → others owe payer
+    if (type === 0 || type === 2) {
+      // Pagato da payer, diviso equamente: ogni partecipante (escluso payer) deve la sua quota
       const share = amount / parts;
       participants.forEach(p => {
         if (p !== payer) {
+          if (balances[p] === undefined) balances[p] = {};
+          if (balances[payer] === undefined) balances[payer] = {};
           balances[p][payer] = (balances[p][payer] || 0) + share;
         }
       });
-    } else if (type === 1) {
-      // Paid by payer, full amount for payer → no one owes anything (payer keeps all)
-      // No debt
-    } else if (type === 2) {
-      // Paid by payer, split equally among participants
-      const share = amount / parts;
-      participants.forEach(p => {
-        if (p !== payer) {
-          balances[p][payer] = (balances[p][payer] || 0) + share;
-        }
-      });
-    } else if (type === 3) {
-      // Paid by payer, full amount for payer → others owe nothing
-      // No debt
     }
+    // type 1 e 3: nessun debito (tutto al pagante o spesa personale)
   });
 
-  // Simplify: net[i][j]
-  const net = {};
-  state.users.forEach((_, i) => {
-    net[i] = {};
-    state.users.forEach((_, j) => {
-      if (i !== j) {
-        const ij = balances[i][j] || 0;
-        const ji = balances[j][i] || 0;
-        net[i][j] = ij - ji;
-      }
-    });
-  });
+  return balances;
+}
 
+// Ritorna il bilancio NETTO dell'utente: positivo = ti devono, negativo = devi tu
+function getNetBalance(userIdx) {
+  const b = calculateBalances();
+  let net = 0;
+  state.users.forEach((_, j) => {
+    if (j === userIdx) return;
+    const iOweJ  = b[userIdx]?.[j] || 0;  // io devo a j
+    const jOwesI = b[j]?.[userIdx] || 0;  // j deve a me
+    net += jOwesI - iOweJ;
+  });
   return net;
 }
 
-function getUserBalance(userIdx) {
-  const net = calculateBalances();
-  let totalOwed = 0; // others owe me
-  let totalOwe = 0;  // I owe others
-
-  state.users.forEach((_, j) => {
-    if (j === userIdx) return;
-    const val = net[j][userIdx] || 0; // j owes userIdx
-    const val2 = net[userIdx][j] || 0; // userIdx owes j
-    const netVal = val - val2;
-    if (netVal > 0) totalOwed += netVal;
-    else totalOwe += Math.abs(netVal);
-  });
-
-  return { totalOwed, totalOwe };
-}
-
+// Dettaglio per ogni coppia: chi deve quanto a chi
 function getDebtDetails(userIdx) {
-  const net = calculateBalances();
+  const b = calculateBalances();
   const details = [];
-
   state.users.forEach((_, j) => {
     if (j === userIdx) return;
-    const iOweJ = net[userIdx][j] || 0;
-    const jOwesMe = net[j][userIdx] || 0;
-    const netVal = iOweJ - jOwesMe;
-
-    if (Math.abs(netVal) > 0.005) {
-      if (netVal > 0) {
-        // I owe j
-        details.push({ from: userIdx, to: j, amount: netVal, type: 'owe' });
+    const iOweJ  = b[userIdx]?.[j] || 0;
+    const jOwesI = b[j]?.[userIdx] || 0;
+    const net = jOwesI - iOweJ;  // positivo = j deve a me
+    if (Math.abs(net) > 0.005) {
+      if (net > 0) {
+        details.push({ from: j, to: userIdx, amount: net, type: 'owed' }); // j deve a me
       } else {
-        // j owes me
-        details.push({ from: j, to: userIdx, amount: -netVal, type: 'owed' });
+        details.push({ from: userIdx, to: j, amount: -net, type: 'owe' }); // io devo a j
       }
     }
+  });
+  return details;
+}
   });
 
   return details;
@@ -1813,60 +1789,38 @@ function renderHome() {
   if (state.currentUser === null) return;
   const cu = state.currentUser;
 
-  // Bilancio netto: positivo = ti devono, negativo = devi tu
-  const net = calculateBalances();
-  let netBalance = 0;
-  state.users.forEach((_, j) => {
-    if (j === cu) return;
-    // quanto j deve a me - quanto io devo a j
-    const jOwesMe = net[j]?.[cu] || 0;
-    const iOweJ   = net[cu]?.[j] || 0;
-    netBalance += (jOwesMe - iOweJ);
-  });
-
+  // --- INDICATORE SINGOLO ---
+  const netBalance = getNetBalance(cu);
   const card   = document.getElementById('balance-card-single');
   const label  = document.getElementById('balance-label-single');
   const amount = document.getElementById('balance-amount-single');
   const sub    = document.getElementById('balance-sub-single');
 
   if (Math.abs(netBalance) < 0.01) {
-    card.className = 'balance-card';
-    card.style.setProperty('--glow-color', 'transparent');
-    label.textContent  = 'Bilancio';
-    amount.textContent = '€0';
-    amount.className   = 'balance-amount';
-    amount.style.color = 'var(--text2)';
+    card.className       = 'balance-card';
+    label.textContent    = 'Bilancio';
+    amount.textContent   = '€0,00';
+    amount.style.color   = 'var(--text2)';
     amount.style.textShadow = 'none';
-    sub.textContent    = 'sei in pari ✓';
+    sub.textContent      = 'sei in pari ✓';
   } else if (netBalance > 0) {
-    card.className = 'balance-card positive';
-    label.textContent  = 'Ti devono';
-    amount.textContent = '€' + netBalance.toFixed(2);
-    amount.className   = 'balance-amount positive';
-    amount.style.color = 'var(--green)';
-    amount.style.textShadow = '0 0 15px rgba(0,229,160,0.6)';
-    // quante persone devono a me
-    const creditors = state.users.filter((_, j) => {
-      if (j === cu) return false;
-      return ((net[j]?.[cu] || 0) - (net[cu]?.[j] || 0)) > 0.01;
-    });
-    sub.textContent = creditors.length === 1
-      ? `da ${state.users[creditors[0]].name}`
-      : `da ${creditors.length} persone`;
+    card.className       = 'balance-card positive';
+    label.textContent    = 'Ti devono';
+    amount.textContent   = '€' + netBalance.toFixed(2);
+    amount.style.color   = 'var(--green)';
+    amount.style.textShadow = '0 0 20px rgba(0,229,160,0.6)';
+    const details = getDebtDetails(cu);
+    const names = details.filter(d => d.type === 'owed').map(d => state.users[d.from]?.name).filter(Boolean);
+    sub.textContent = names.length ? 'da ' + names.join(', ') : '';
   } else {
-    card.className = 'balance-card negative';
-    label.textContent  = 'Devi dare';
-    amount.textContent = '€' + Math.abs(netBalance).toFixed(2);
-    amount.className   = 'balance-amount negative';
-    amount.style.color = 'var(--red)';
-    amount.style.textShadow = '0 0 15px rgba(255,77,109,0.6)';
-    const debtors = state.users.filter((_, j) => {
-      if (j === cu) return false;
-      return ((net[cu]?.[j] || 0) - (net[j]?.[cu] || 0)) > 0.01;
-    });
-    sub.textContent = debtors.length === 1
-      ? `a ${state.users[debtors[0]].name}`
-      : `a ${debtors.length} persone`;
+    card.className       = 'balance-card negative';
+    label.textContent    = 'Devi dare';
+    amount.textContent   = '€' + Math.abs(netBalance).toFixed(2);
+    amount.style.color   = 'var(--red)';
+    amount.style.textShadow = '0 0 20px rgba(255,77,109,0.6)';
+    const details = getDebtDetails(cu);
+    const names = details.filter(d => d.type === 'owe').map(d => state.users[d.to]?.name).filter(Boolean);
+    sub.textContent = names.length ? 'a ' + names.join(', ') : '';
   }
 
   // Debt details
