@@ -370,10 +370,7 @@
     letter-spacing: 1px;
   }
 
-  .balance-cards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+  .balance-cards-single {
     margin-bottom: 24px;
   }
 
@@ -381,20 +378,31 @@
     background: rgba(13,13,43,0.8);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 18px 16px;
+    padding: 24px 20px;
     position: relative;
     overflow: hidden;
     backdrop-filter: blur(10px);
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .balance-card.positive {
+    border-color: rgba(0,229,160,0.3);
+    box-shadow: 0 0 30px rgba(0,229,160,0.08);
+  }
+  .balance-card.negative {
+    border-color: rgba(255,77,109,0.3);
+    box-shadow: 0 0 30px rgba(255,77,109,0.08);
   }
 
   .balance-card::before {
     content: '';
     position: absolute;
-    top: -20px; right: -20px;
-    width: 80px; height: 80px;
+    top: -30px; right: -30px;
+    width: 120px; height: 120px;
     border-radius: 50%;
-    filter: blur(25px);
-    opacity: 0.4;
+    filter: blur(35px);
+    opacity: 0.35;
+    transition: background 0.3s;
   }
 
   .balance-card.positive::before { background: var(--green); }
@@ -405,25 +413,26 @@
     color: var(--text3);
     text-transform: uppercase;
     letter-spacing: 2px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     font-weight: 600;
   }
 
   .balance-amount {
     font-family: var(--font-display);
-    font-size: 22px;
-    font-weight: 700;
+    font-size: 36px;
+    font-weight: 900;
     line-height: 1;
     letter-spacing: 1px;
+    transition: color 0.3s, text-shadow 0.3s;
   }
 
-  .balance-amount.positive { color: var(--green); text-shadow: 0 0 15px rgba(0,229,160,0.5); }
-  .balance-amount.negative { color: var(--red); text-shadow: 0 0 15px rgba(255,77,109,0.5); }
+  .balance-amount.positive { color: var(--green); text-shadow: 0 0 20px rgba(0,229,160,0.5); }
+  .balance-amount.negative { color: var(--red);   text-shadow: 0 0 20px rgba(255,77,109,0.5); }
 
   .balance-sub {
-    font-size: 11px;
-    color: var(--text3);
-    margin-top: 4px;
+    font-size: 13px;
+    color: var(--text2);
+    margin-top: 8px;
   }
 
   /* ADD EXPENSE BUTTON */
@@ -1122,17 +1131,10 @@
         <div class="home-greeting">Bentornato</div>
         <div class="home-name" id="home-username">—</div>
 
-        <div class="balance-cards">
-          <div class="balance-card" id="balance-card-owed">
-            <div class="balance-label">Ti devono</div>
-            <div class="balance-amount positive" id="balance-owed">€0</div>
-            <div class="balance-sub" id="balance-owed-detail">da 0 persone</div>
-          </div>
-          <div class="balance-card" id="balance-card-owe">
-            <div class="balance-label">Devi dare</div>
-            <div class="balance-amount negative" id="balance-owe">€0</div>
-            <div class="balance-sub" id="balance-owe-detail">a 0 persone</div>
-          </div>
+        <div id="balance-card-single" class="balance-card" style="margin-bottom:24px">
+          <div class="balance-label" id="balance-label-single">Bilancio</div>
+          <div class="balance-amount" id="balance-amount-single">€0</div>
+          <div class="balance-sub" id="balance-sub-single">in pari</div>
         </div>
       </div>
 
@@ -1779,15 +1781,62 @@ function getDebtDetails(userIdx) {
 function renderHome() {
   if (state.currentUser === null) return;
   const cu = state.currentUser;
-  const { totalOwed, totalOwe } = getUserBalance(cu);
 
-  document.getElementById('balance-owed').textContent = '€' + totalOwed.toFixed(2);
-  document.getElementById('balance-owe').textContent = '€' + totalOwe.toFixed(2);
+  // Bilancio netto: positivo = ti devono, negativo = devi tu
+  const net = calculateBalances();
+  let netBalance = 0;
+  state.users.forEach((_, j) => {
+    if (j === cu) return;
+    // quanto j deve a me - quanto io devo a j
+    const jOwesMe = net[j]?.[cu] || 0;
+    const iOweJ   = net[cu]?.[j] || 0;
+    netBalance += (jOwesMe - iOweJ);
+  });
 
-  const owedCard = document.getElementById('balance-card-owed');
-  const oweCard = document.getElementById('balance-card-owe');
-  owedCard.className = 'balance-card ' + (totalOwed > 0 ? 'positive' : '');
-  oweCard.className = 'balance-card ' + (totalOwe > 0 ? 'negative' : '');
+  const card   = document.getElementById('balance-card-single');
+  const label  = document.getElementById('balance-label-single');
+  const amount = document.getElementById('balance-amount-single');
+  const sub    = document.getElementById('balance-sub-single');
+
+  if (Math.abs(netBalance) < 0.01) {
+    card.className = 'balance-card';
+    card.style.setProperty('--glow-color', 'transparent');
+    label.textContent  = 'Bilancio';
+    amount.textContent = '€0';
+    amount.className   = 'balance-amount';
+    amount.style.color = 'var(--text2)';
+    amount.style.textShadow = 'none';
+    sub.textContent    = 'sei in pari ✓';
+  } else if (netBalance > 0) {
+    card.className = 'balance-card positive';
+    label.textContent  = 'Ti devono';
+    amount.textContent = '€' + netBalance.toFixed(2);
+    amount.className   = 'balance-amount positive';
+    amount.style.color = 'var(--green)';
+    amount.style.textShadow = '0 0 15px rgba(0,229,160,0.6)';
+    // quante persone devono a me
+    const creditors = state.users.filter((_, j) => {
+      if (j === cu) return false;
+      return ((net[j]?.[cu] || 0) - (net[cu]?.[j] || 0)) > 0.01;
+    });
+    sub.textContent = creditors.length === 1
+      ? `da ${state.users[creditors[0]].name}`
+      : `da ${creditors.length} persone`;
+  } else {
+    card.className = 'balance-card negative';
+    label.textContent  = 'Devi dare';
+    amount.textContent = '€' + Math.abs(netBalance).toFixed(2);
+    amount.className   = 'balance-amount negative';
+    amount.style.color = 'var(--red)';
+    amount.style.textShadow = '0 0 15px rgba(255,77,109,0.6)';
+    const debtors = state.users.filter((_, j) => {
+      if (j === cu) return false;
+      return ((net[cu]?.[j] || 0) - (net[j]?.[cu] || 0)) > 0.01;
+    });
+    sub.textContent = debtors.length === 1
+      ? `a ${state.users[debtors[0]].name}`
+      : `a ${debtors.length} persone`;
+  }
 
   // Debt details
   const details = getDebtDetails(cu);
