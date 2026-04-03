@@ -1271,46 +1271,36 @@
     <div class="modal-title">Nuova Spesa</div>
 
     <div class="form-group">
+      <label class="form-label">Importo (€)</label>
+      <input type="number" inputmode="decimal" id="expense-amount" placeholder="0.00" step="0.01" min="0"
+        style="font-size:28px;font-family:var(--font-display);font-weight:700;letter-spacing:1px;text-align:center;padding:18px 16px"
+        onkeydown="if(event.key==='Enter')document.getElementById('expense-desc').focus()">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Descrizione</label>
+      <input type="text" id="expense-desc" placeholder="es. Spesa supermercato" maxlength="80"
+        onkeydown="if(event.key==='Enter')document.getElementById('expense-date').focus()">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Data</label>
+      <input type="date" id="expense-date" style="color:var(--text);color-scheme:dark">
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Tipo di spesa</label>
-      <div class="type-grid">
-        <button class="type-btn selected" onclick="selectType(0)" id="type-0">
-          <span class="type-icon">💳</span>
-          Ho pagato io<br>dividiamo
-        </button>
-        <button class="type-btn" onclick="selectType(1)" id="type-1">
-          <span class="type-icon">🎯</span>
-          Ho pagato io<br>mi devono tutto
-        </button>
-        <button class="type-btn" onclick="selectType(2)" id="type-2">
-          <span class="type-icon">👥</span>
-          Ha pagato altro<br>dividiamo
-        </button>
-        <button class="type-btn" onclick="selectType(3)" id="type-3">
-          <span class="type-icon">👤</span>
-          Ha pagato altro<br>devo tutto
-        </button>
-      </div>
+      <select id="expense-type-select" onchange="selectTypeFromDropdown(this.value)" style="color:var(--text)">
+        <option value="0">💳 Ho pagato io — dividiamo</option>
+        <option value="1">🎯 Ho pagato io — mi devono tutto</option>
+        <option value="2">👥 Ha pagato un altro — dividiamo</option>
+        <option value="3">👤 Ha pagato un altro — devo tutto</option>
+      </select>
     </div>
 
     <div class="form-group" id="payer-group" style="display:none">
       <label class="form-label">Chi ha pagato?</label>
       <select id="payer-select" style="color:var(--text)"></select>
-    </div>
-
-    <div class="row-2">
-      <div class="form-group">
-        <label class="form-label">Importo (€)</label>
-        <input type="number" inputmode="decimal" id="expense-amount" placeholder="0.00" step="0.01" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Data</label>
-        <input type="text" id="expense-date" readonly style="color:var(--text2)">
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Descrizione</label>
-      <input type="text" id="expense-desc" placeholder="es. Spesa supermercato" maxlength="80">
     </div>
 
     <div class="form-group">
@@ -1648,27 +1638,41 @@ function switchTab(tab) {
 // ==================== ADD EXPENSE MODAL ====================
 
 function openAddExpense() {
-  // Set date
+  // Data odierna in formato YYYY-MM-DD per input[type=date]
   const now = new Date();
-  document.getElementById('expense-date').value = now.toLocaleDateString('it-IT');
+  const yyyy = now.getFullYear();
+  const mm   = String(now.getMonth() + 1).padStart(2, '0');
+  const dd   = String(now.getDate()).padStart(2, '0');
+  document.getElementById('expense-date').value = `${yyyy}-${mm}-${dd}`;
   document.getElementById('expense-desc').value = '';
   document.getElementById('expense-amount').value = '';
+
+  // Reset dropdown tipo
+  document.getElementById('expense-type-select').value = '0';
+  selectType(0);
 
   // Payer select
   const payerSel = document.getElementById('payer-select');
   payerSel.innerHTML = state.users
     .filter((_, i) => i !== state.currentUser)
-    .map((u, _) => {
+    .map((u) => {
       const realIdx = state.users.indexOf(u);
       return `<option value="${realIdx}">${u.name}</option>`;
     }).join('');
 
-  // Participants
+  // Tutti i partecipanti selezionati di default
   selectedParticipants = new Set(state.users.map((_, i) => i));
   renderParticipants();
 
-  selectType(0);
   document.getElementById('add-modal').classList.add('open');
+
+  // Focus automatico sull'importo — piccolo delay per attendere l'animazione sheet
+  setTimeout(() => {
+    const amountInput = document.getElementById('expense-amount');
+    amountInput.focus();
+    // Su iOS il focus non basta, serve anche il .click() per aprire il tastierino
+    amountInput.click();
+  }, 320);
 }
 
 function closeModal() {
@@ -1676,13 +1680,13 @@ function closeModal() {
 }
 
 function selectType(t) {
-  selectedExpenseType = t;
-  for (let i = 0; i < 4; i++) document.getElementById('type-' + i).classList.remove('selected');
-  document.getElementById('type-' + t).classList.add('selected');
+  selectedExpenseType = parseInt(t);
+  document.getElementById('expense-type-select').value = String(t);
+  document.getElementById('payer-group').style.display = (t == 2 || t == 3) ? 'block' : 'none';
+}
 
-  // Show payer group only for types 2 and 3
-  const payerGroup = document.getElementById('payer-group');
-  payerGroup.style.display = (t === 2 || t === 3) ? 'block' : 'none';
+function selectTypeFromDropdown(val) {
+  selectType(parseInt(val));
 }
 
 function renderParticipants() {
@@ -1721,9 +1725,12 @@ async function saveExpense() {
     payerIdx = parseInt(document.getElementById('payer-select').value);
   }
 
+  const dateVal = document.getElementById('expense-date').value;
+  const date = dateVal ? new Date(dateVal).toISOString() : new Date().toISOString();
+
   const exp = {
     id: Date.now().toString(),
-    date: new Date().toISOString(),
+    date,
     desc,
     amount,
     type,
@@ -2236,7 +2243,7 @@ function showToast(msg) {
 Object.assign(window, {
   createUser, loginAs, logout, switchProfile, firebaseLogin,
   switchTab,
-  openAddExpense, closeModal, selectType, toggleParticipant, saveExpense,
+  openAddExpense, closeModal, selectType, selectTypeFromDropdown, toggleParticipant, saveExpense,
   deleteExpensePrompt, closeConfirm, confirmDelete,
   addShoppingItem, toggleShoppingItem, deleteShoppingItem,
   renderStats,
