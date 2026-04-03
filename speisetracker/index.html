@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SpeiseTracker">
@@ -39,6 +39,11 @@
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
 
   body {
     font-family: var(--font-sans);
@@ -187,14 +192,15 @@
     gap: 10px;
   }
 
-  input[type="text"], input[type="number"], textarea, select {
-    background: var(--bg3);
-    border: 1px solid var(--border);
+  input[type="text"], input[type="number"], input[type="date"],
+  input[type="email"], input[type="password"], textarea, select {
+    background: rgba(0,0,20,0.7);
+    border: 1px solid rgba(100,120,255,0.2);
     border-radius: var(--radius-sm);
     padding: 14px 16px;
     color: var(--text);
     font-family: var(--font-sans);
-    font-size: 15px;
+    font-size: 16px; /* minimo 16px per evitare auto-zoom su Android/iOS */
     width: 100%;
     outline: none;
     transition: border-color 0.2s;
@@ -1468,9 +1474,12 @@ async function checkShortcutAccess() {
   if (!SHORTCUT_KEY) return false;
   try {
     const snap = await getDoc(doc(db, 'config', 'settings'));
-    if (!snap.exists()) return false;
-    return snap.data().shortcutKey === SHORTCUT_KEY;
-  } catch(e) { return false; }
+    if (!snap.exists()) { console.log('settings doc non trovato'); return false; }
+    const stored = (snap.data().shortcutKey || '').trim();
+    const given  = SHORTCUT_KEY.trim();
+    console.log('stored:', stored, '| given:', given, '| match:', stored === given);
+    return stored === given;
+  } catch(e) { console.log('checkShortcutAccess error:', e); return false; }
 }
 
 // ---- INIT ----
