@@ -379,6 +379,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 24px 20px;
+    margin-bottom: 24px;
     position: relative;
     overflow: hidden;
     backdrop-filter: blur(10px);
@@ -1131,10 +1132,10 @@
         <div class="home-greeting">Bentornato</div>
         <div class="home-name" id="home-username">—</div>
 
-        <div id="balance-card-single" class="balance-card" style="margin-bottom:24px">
+        <div id="balance-card-single" class="balance-card">
           <div class="balance-label" id="balance-label-single">Bilancio</div>
-          <div class="balance-amount" id="balance-amount-single">€0</div>
-          <div class="balance-sub" id="balance-sub-single">in pari</div>
+          <div class="balance-amount" id="balance-amount-single" style="font-size:36px;font-weight:900">€0</div>
+          <div class="balance-sub" id="balance-sub-single">sei in pari ✓</div>
         </div>
       </div>
 
@@ -1406,17 +1407,47 @@ function fbListenExpenses() {
   if (unsubExpenses) unsubExpenses();
   const q = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
   unsubExpenses = onSnapshot(q, snap => {
-    state.expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.expenses = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        ...data,
+        id: d.id,  // usa SEMPRE il doc ID di Firestore come id
+        // normalizza la data: Firestore Timestamp → ISO string
+        date: data.date || (data.createdAt?.toDate?.()?.toISOString()) || new Date().toISOString(),
+      };
+    });
     if (state.currentUser !== null) { renderHome(); renderHistory(); }
   }, err => showToast('⚠️ Sync error: ' + err.code));
 }
+
 async function fbAddExpense(exp) {
-  if (!db) { state.expenses.unshift(exp); localSave(); renderHome(); renderHistory(); return; }
-  await addDoc(collection(db, 'expenses'), { ...exp, createdAt: serverTimestamp() });
+  if (!db) {
+    state.expenses.unshift(exp);
+    localSave();
+    renderHome();
+    renderHistory();
+    return;
+  }
+  // Non salviamo exp.id: sarà il doc ID di Firestore
+  const { id: _discard, ...expData } = exp;
+  await addDoc(collection(db, 'expenses'), { ...expData, createdAt: serverTimestamp() });
+  // onSnapshot aggiornerà automaticamente
 }
+
 async function fbDeleteExpense(id) {
-  if (!db) { state.expenses = state.expenses.filter(e => e.id !== id); localSave(); renderHome(); renderHistory(); return; }
-  await deleteDoc(doc(db, 'expenses', id));
+  if (!db) {
+    state.expenses = state.expenses.filter(e => e.id !== id);
+    localSave();
+    renderHome();
+    renderHistory();
+    return;
+  }
+  try {
+    await deleteDoc(doc(db, 'expenses', id));
+    // onSnapshot aggiornerà automaticamente
+  } catch(e) {
+    showToast('⚠️ Errore eliminazione: ' + e.code);
+  }
 }
 
 // ---- INIT ----
