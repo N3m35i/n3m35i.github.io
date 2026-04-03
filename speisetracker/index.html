@@ -1377,8 +1377,7 @@ if (!NOT_CONFIGURED) {
 // ==================== DATA ====================
 const COLORS = ['#e8b86d','#7c6af7','#4ecdc4','#ff6b6b','#51cf66','#ff9f43','#a29bfe','#fd79a8'];
 
-let state = { users: [], expenses: [], currentUser: null };
-let sessionShopping = [];
+let state = { users: [], expenses: [], shopping: [], currentUser: null };
 let pendingDeleteId = null;
 let selectedExpenseType = 0;
 let selectedParticipants = new Set();
@@ -1506,6 +1505,7 @@ async function initData() {
       try {
         await fbLoadUsers();
         fbListenExpenses();
+        fbListenShopping();
       } catch(e) {
         showToast('⚠️ Errore DB: ' + e.code);
       }
@@ -1554,7 +1554,9 @@ async function firebaseLogout() {
   if (auth) await signOut(auth);
   state.currentUser = null;
   state.authUser = null;
+  state.shopping = [];
   if (unsubExpenses) { unsubExpenses(); unsubExpenses = null; }
+  if (unsubShopping) { unsubShopping(); unsubShopping = null; }
   switchTab('home');
 }
 
@@ -2112,49 +2114,114 @@ async function confirmDelete() {
 
 // ==================== SHOPPING LIST ====================
 
+let unsubShopping = null;
+
+// Avvia il realtime listener sulla lista della spesa
+function fbListenShopping() {
+  if (!db) return;
+  if (unsubShopping) unsubShopping();
+  unsubShopping = onSnapshot(collection(db, 'shopping'), snap => {
+    // Aggiorna state e rimuovi eventuali elementi scaduti
+    const now = Date.now();
+    state.shopping = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Pulizia lato client: elimina da Firestore gli elementi spuntati scaduti
+    state.shopping.forEach(item => {
+      if (item.checked && item.checkedAt) {
+        const checkedAt = item.checkedAt?.toMillis ? item.checkedAt.toMillis() : item.checkedAt;
+        if (now - checkedAt > 15 * 60 * 1000) {
+          deleteDoc(doc(db, 'shopping', item.id)).catch(() => {});
+        }
+      }
+    });
+    renderShopping();
+  });
+}
+
+async function addShoppingItem() {
+  const input = document.getElementById('shopping-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  if (!db) {
+    state.shopping = state.shopping || [];
+    state.shopping.push({ id: Date.now().toString(), text, checked: false });
+    renderShopping();
+    return;
+  }
+  await addDoc(collection(db, 'shopping'), {
+    text,
+    checked: false,
+    checkedAt: null,
+    createdAt: serverTimestamp(),
+  });
+}
+
+async function toggleShoppingItem(id) {
+  if (!db) {
+    const item = (state.shopping || []).find(i => i.id === id);
+    if (item) { item.checked = !item.checked; renderShopping(); }
+    return;
+  }
+  const item = state.shopping.find(i => i.id === id);
+  if (!item) return;
+  const nowChecked = !item.checked;
+  await setDoc(doc(db, 'shopping', id), {
+    checked: nowChecked,
+    checkedAt: nowChecked ? serverTimestamp() : null,
+  }, { merge: true });
+}
+
+async function deleteShoppingItem(id) {
+  if (!db) {
+    state.shopping = (state.shopping || []).filter(i => i.id !== id);
+    renderShopping();
+    return;
+  }
+  await deleteDoc(doc(db, 'shopping', id));
+}
+
 function renderShopping() {
+  const items = state.shopping || [];
   const list = document.getElementById('shopping-list');
   const progressWrap = document.getElementById('shopping-progress-wrap');
   const progressBar = document.getElementById('shopping-progress-bar');
 
-  if (sessionShopping.length === 0) {
+  if (items.length === 0) {
     list.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-text">La lista è vuota</div></div>';
     progressWrap.style.display = 'none';
     return;
   }
 
   progressWrap.style.display = 'block';
-  const checked = sessionShopping.filter(i => i.checked).length;
-  const pct = (checked / sessionShopping.length) * 100;
-  progressBar.style.width = pct + '%';
+  const checked = items.filter(i => i.checked).length;
+  progressBar.style.width = (checked / items.length * 100) + '%';
 
-  list.innerHTML = sessionShopping.map((item, idx) => `
-    <div class="shopping-item ${item.checked ? 'checked' : ''}" onclick="toggleShoppingItem(${idx})">
-      <div class="check-circle">${item.checked ? '✓' : ''}</div>
-      <div class="shopping-item-text">${item.text}</div>
-      <button class="shopping-item-delete" onclick="event.stopPropagation();deleteShoppingItem(${idx})">✕</button>
-    </div>
-  `).join('');
+  const now = Date.now();
+  list.innerHTML = items.map(item => {
+    // Calcola il countdown se spuntato
+    let countdown = '';
+    if (item.checked && item.checkedAt) {
+      const checkedAt = item.checkedAt?.toMillis ? item.checkedAt.toMillis() : item.checkedAt;
+      const remaining = Math.max(0, 15 * 60 * 1000 - (now - checkedAt));
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      countdown = `<span style="font-size:10px;color:var(--text3);margin-left:auto;padding-right:8px">${mins}:${String(secs).padStart(2,'0')}</span>`;
+    }
+    return `
+      <div class="shopping-item ${item.checked ? 'checked' : ''}" onclick="toggleShoppingItem('${item.id}')">
+        <div class="check-circle">${item.checked ? '✓' : ''}</div>
+        <div class="shopping-item-text">${item.text}</div>
+        ${countdown}
+        <button class="shopping-item-delete" onclick="event.stopPropagation();deleteShoppingItem('${item.id}')">✕</button>
+      </div>
+    `;
+  }).join('');
 }
 
-function addShoppingItem() {
-  const input = document.getElementById('shopping-input');
-  const text = input.value.trim();
-  if (!text) return;
-  sessionShopping.push({ text, checked: false });
-  input.value = '';
-  renderShopping();
-}
-
-function toggleShoppingItem(idx) {
-  sessionShopping[idx].checked = !sessionShopping[idx].checked;
-  renderShopping();
-}
-
-function deleteShoppingItem(idx) {
-  sessionShopping.splice(idx, 1);
-  renderShopping();
-}
+// Ticker ogni 30s per aggiornare i countdown e scatenare le pulizie
+setInterval(() => {
+  if (state.shopping?.some(i => i.checked)) renderShopping();
+}, 30000);
 
 // ==================== TOAST ====================
 
