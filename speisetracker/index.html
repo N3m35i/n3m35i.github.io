@@ -763,7 +763,7 @@
     display: flex;
     align-items: flex-end;
     gap: 6px;
-    height: 140px;
+    height: 160px;
     margin-bottom: 8px;
     padding: 0 4px;
   }
@@ -2099,71 +2099,103 @@ function renderHistory() {
 
 // ==================== STATS ====================
 
+function toggleYearDetail(year) {
+  const el    = document.getElementById('year-detail-' + year);
+  const arrow = document.getElementById('year-arrow-' + year);
+  const open  = el.style.display === 'none' || el.style.display === '';
+  el.style.display = open ? 'block' : 'none';
+  arrow.textContent = open ? '▲' : '▼';
+}
+
 function renderStats() {
   const now = new Date();
   const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
+  const currentYear  = now.getFullYear();
+  const monthNames   = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const shortMonths  = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
-  // Month stats
-  const monthExps = state.expenses.filter(e => {
-    const d = new Date(e.date);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
+  // Mese corrente
+  const monthExps  = state.expenses.filter(e => { const d = new Date(e.date); return d.getMonth() === currentMonth && d.getFullYear() === currentYear; });
   const monthTotal = monthExps.reduce((s, e) => s + e.amount, 0);
   document.getElementById('stats-month-total').textContent = '€' + monthTotal.toFixed(2);
-  document.getElementById('stats-month-desc').textContent = `${monthExps.length} spese`;
+  document.getElementById('stats-month-desc').textContent  = `${monthExps.length} spese`;
 
-  // Year stats
-  const yearExps = state.expenses.filter(e => new Date(e.date).getFullYear() === currentYear);
+  // Anno corrente
+  const yearExps  = state.expenses.filter(e => new Date(e.date).getFullYear() === currentYear);
   const yearTotal = yearExps.reduce((s, e) => s + e.amount, 0);
   document.getElementById('stats-year-total').textContent = '€' + yearTotal.toFixed(2);
-  document.getElementById('stats-year-desc').textContent = `${yearExps.length} spese totali`;
+  document.getElementById('stats-year-desc').textContent  = `${yearExps.length} spese totali`;
 
-  // Chart: last 6 months
+  // Grafico ultimi 6 mesi con totale sopra le colonne
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(currentYear, currentMonth - i, 1);
     months.push({ year: d.getFullYear(), month: d.getMonth() });
   }
-
   const monthTotals = months.map(m => {
     const total = state.expenses
       .filter(e => { const d = new Date(e.date); return d.getMonth() === m.month && d.getFullYear() === m.year; })
       .reduce((s, e) => s + e.amount, 0);
     return { ...m, total };
   });
-
   const maxTotal = Math.max(...monthTotals.map(m => m.total), 1);
-  const shortMonths = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
-  const chartBars = document.getElementById('chart-bars');
-  chartBars.innerHTML = monthTotals.map(m => {
-    const isCurrent = m.month === currentMonth && m.year === currentYear;
-    const pct = (m.total / maxTotal) * 100;
+  document.getElementById('chart-bars').innerHTML = monthTotals.map(m => {
+    const isCurrent  = m.month === currentMonth && m.year === currentYear;
+    const pct        = (m.total / maxTotal) * 100;
+    const label      = m.total > 0 ? (m.total >= 1000 ? '€' + (m.total/1000).toFixed(1) + 'k' : '€' + Math.round(m.total)) : '';
     return `
       <div class="chart-bar-wrap">
-        <div class="chart-bar ${isCurrent ? 'current' : ''}" style="height:${Math.max(pct, 3)}%" title="€${m.total.toFixed(2)}"></div>
-        <div class="chart-bar-label">${shortMonths[m.month]}</div>
+        <div style="font-size:8px;color:${isCurrent ? 'var(--accent)' : 'var(--text3)'};text-align:center;margin-bottom:3px;min-height:12px;font-weight:600;letter-spacing:0.3px">${label}</div>
+        <div class="chart-bar ${isCurrent ? 'current' : ''}" style="height:${Math.max(pct, 3)}%"></div>
+        <div class="chart-bar-label" style="${isCurrent ? 'color:var(--accent)' : ''}">${shortMonths[m.month]}</div>
       </div>
     `;
   }).join('');
 
-  // Annual table
+  // Tabella annuale con dropdown mesi
   const years = [...new Set(state.expenses.map(e => new Date(e.date).getFullYear()))].sort().reverse();
   const tbody = document.getElementById('annual-tbody');
+
   if (years.length === 0) {
     tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text3);text-align:center;padding:20px">Nessuna spesa</td></tr>';
-  } else {
-    tbody.innerHTML = years.map(y => {
-      const exps = state.expenses.filter(e => new Date(e.date).getFullYear() === y);
-      const total = exps.reduce((s, e) => s + e.amount, 0);
-      return `<tr>
-        <td>${y}</td>
-        <td>${exps.length} spese</td>
-        <td>€${total.toFixed(2)}</td>
+    return;
+  }
+
+  tbody.innerHTML = years.map(y => {
+    const exps  = state.expenses.filter(e => new Date(e.date).getFullYear() === y);
+    const total = exps.reduce((s, e) => s + e.amount, 0);
+
+    // Raggruppa per mese
+    const mGroups = {};
+    exps.forEach(e => {
+      const m = new Date(e.date).getMonth();
+      if (!mGroups[m]) mGroups[m] = [];
+      mGroups[m].push(e);
+    });
+
+    const monthRows = Object.keys(mGroups).sort((a,b) => b - a).map(m => {
+      const mTotal = mGroups[m].reduce((s, e) => s + e.amount, 0);
+      return `<tr style="background:rgba(0,212,255,0.03)">
+        <td style="padding:10px 0 10px 24px;font-size:12px;color:var(--text2);font-family:var(--font-sans);font-weight:400;border-bottom:1px solid rgba(100,120,255,0.06)">${monthNames[parseInt(m)]}</td>
+        <td style="font-size:12px;color:var(--text3);border-bottom:1px solid rgba(100,120,255,0.06)">${mGroups[m].length} spese</td>
+        <td style="text-align:right;font-size:13px;color:var(--text2);font-family:var(--font-display);border-bottom:1px solid rgba(100,120,255,0.06)">€${mTotal.toFixed(2)}</td>
       </tr>`;
     }).join('');
-  }
+
+    return `
+      <tr onclick="toggleYearDetail(${y})" style="cursor:pointer">
+        <td><span style="display:inline-flex;align-items:center;gap:8px">${y} <span id="year-arrow-${y}" style="font-size:10px;color:var(--text3)">▼</span></span></td>
+        <td>${exps.length} spese</td>
+        <td>€${total.toFixed(2)}</td>
+      </tr>
+      <tr><td colspan="3" style="padding:0;border:none">
+        <div id="year-detail-${y}" style="display:none">
+          <table style="width:100%;border-collapse:collapse">${monthRows}</table>
+        </div>
+      </td></tr>
+    `;
+  }).join('');
 }
 
 // ==================== DELETE ====================
@@ -2313,7 +2345,7 @@ Object.assign(window, {
   openAddExpense, closeModal, selectType, selectTypeFromDropdown, toggleParticipant, saveExpense,
   deleteExpensePrompt, closeConfirm, confirmDelete,
   addShoppingItem, toggleShoppingItem, deleteShoppingItem,
-  renderStats,
+  renderStats, toggleYearDetail,
 });
 
 // ==================== SERVICE WORKER ====================
