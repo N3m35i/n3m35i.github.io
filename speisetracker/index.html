@@ -1034,6 +1034,32 @@
 <!-- STARFIELD -->
 <canvas id="starfield"></canvas>
 
+<!-- AUTH SCREEN (Firebase email+password) -->
+<div id="auth-screen" style="display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;position:relative;z-index:1;
+  background:radial-gradient(ellipse at 30% 20%, rgba(168,85,247,0.2) 0%, transparent 55%),
+             radial-gradient(ellipse at 80% 80%, rgba(0,212,255,0.12) 0%, transparent 50%);">
+  <div style="font-family:var(--font-display);font-size:28px;font-weight:900;color:var(--accent);margin-bottom:6px;letter-spacing:3px;text-shadow:var(--glow-cyan)">🚀 SpeiseTracker</div>
+  <div style="font-size:11px;color:var(--text2);margin-bottom:48px;letter-spacing:4px;text-transform:uppercase">famiglia · spese · orbita</div>
+
+  <div style="background:rgba(13,13,43,0.9);border:1px solid rgba(0,212,255,0.15);border-radius:18px;padding:32px 24px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,30,0.8);backdrop-filter:blur(20px)">
+    <div style="font-family:var(--font-display);font-size:16px;font-weight:700;letter-spacing:2px;margin-bottom:6px">ACCESSO</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:28px">Inserisci le tue credenziali</div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <input type="email" id="auth-email" placeholder="Email" autocomplete="email"
+        style="background:rgba(0,0,20,0.7);border:1px solid rgba(100,120,255,0.2);border-radius:10px;padding:14px 16px;color:var(--text);font-family:var(--font-sans);font-size:15px;outline:none;width:100%"
+        onkeydown="if(event.key==='Enter')document.getElementById('auth-pass').focus()">
+      <input type="password" id="auth-pass" placeholder="Password" autocomplete="current-password"
+        style="background:rgba(0,0,20,0.7);border:1px solid rgba(100,120,255,0.2);border-radius:10px;padding:14px 16px;color:var(--text);font-family:var(--font-sans);font-size:15px;outline:none;width:100%"
+        onkeydown="if(event.key==='Enter')firebaseLogin()">
+      <button id="auth-btn" onclick="firebaseLogin()"
+        style="background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:10px;padding:14px;font-family:var(--font-sans);font-size:14px;font-weight:600;cursor:pointer;letter-spacing:0.5px;box-shadow:0 4px 20px rgba(0,212,255,0.25);margin-top:4px">
+        Accedi
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- LOADER -->
 <div id="loader-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;flex-direction:column;align-items:center;justify-content:center;gap:16px">
   <div style="font-size:48px;animation:spin 1.5s linear infinite">🔄</div>
@@ -1076,9 +1102,16 @@
 <div id="app">
   <header class="app-header">
     <div class="header-logo">🚀 SpeiseTracker</div>
-    <div class="header-user" onclick="logout()">
-      <div class="header-avatar" id="header-avatar"></div>
-      <span class="header-name" id="header-name"></span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="font-size:10px;color:var(--text3);letter-spacing:0.5px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="auth-email-display"></div>
+      <div class="header-user" onclick="switchProfile()" title="Cambia profilo">
+        <div class="header-avatar" id="header-avatar"></div>
+        <span class="header-name" id="header-name"></span>
+      </div>
+      <button onclick="logout()" title="Esci" style="background:none;border:1px solid rgba(255,77,109,0.3);border-radius:8px;padding:6px 10px;color:var(--red);font-size:11px;cursor:pointer;font-family:var(--font-sans);letter-spacing:0.5px;transition:all 0.2s"
+        onmouseover="this.style.background='rgba(255,77,109,0.1)'" onmouseout="this.style.background='none'">
+        ESCI
+      </button>
     </div>
   </header>
 
@@ -1321,14 +1354,19 @@ import { getFirestore, doc, getDoc, setDoc,
          collection, onSnapshot, addDoc, deleteDoc,
          serverTimestamp, query, orderBy }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword,
+         signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const NOT_CONFIGURED = firebaseConfig.apiKey === "INSERISCI_API_KEY";
 let db = null;
+let auth = null;
 let unsubExpenses = null;
 
 if (!NOT_CONFIGURED) {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
+  auth = getAuth(app);
 }
 
 // ==================== DATA ====================
@@ -1389,23 +1427,82 @@ function hideLoader() {
   if (l) l.style.display='none';
 }
 
+function showScreen(name) {
+  // name: 'auth' | 'profile' | 'app'
+  document.getElementById('auth-screen').style.display  = name === 'auth'    ? 'flex' : 'none';
+  document.getElementById('login-screen').style.display = name === 'profile' ? 'flex' : 'none';
+  document.getElementById('app').style.display          = name === 'app'     ? 'flex' : 'none';
+  if (name === 'app') document.getElementById('app').style.flexDirection = 'column';
+}
+
 async function initData() {
   if (NOT_CONFIGURED) {
     document.getElementById('config-warning').style.display = 'flex';
     localLoad();
-  } else {
-    showLoader('Connessione al database…');
-    try {
-      await fbLoadUsers();
-      fbListenExpenses();
-      hideLoader();
-    } catch(e) {
-      hideLoader();
-      showToast('⚠️ Errore Firebase: controlla la config');
-      localLoad();
-    }
+    showScreen('profile');
+    renderLoginUsers();
+    return;
   }
-  renderLoginUsers();
+
+  showLoader('Connessione…');
+
+  // Firebase Auth state listener — questo è il punto di verità
+  onAuthStateChanged(auth, async (user) => {
+    hideLoader();
+    if (user) {
+      // Autenticato → carica dati e vai alla scelta profilo
+      state.authUser = user;
+      document.getElementById('auth-email-display').textContent = user.email;
+      try {
+        await fbLoadUsers();
+        fbListenExpenses();
+      } catch(e) {
+        showToast('⚠️ Errore DB: ' + e.code);
+      }
+      // Se aveva già scelto un profilo familiare in questa sessione, vai dritto all'app
+      if (state.currentUser !== null) {
+        showScreen('app');
+      } else {
+        showScreen('profile');
+        renderLoginUsers();
+      }
+    } else {
+      // Non autenticato → schermata login Firebase
+      state.authUser = null;
+      showScreen('auth');
+    }
+  });
+}
+
+async function firebaseLogin() {
+  const email = document.getElementById('auth-email').value.trim();
+  const pass  = document.getElementById('auth-pass').value;
+  if (!email || !pass) return showToast('Inserisci email e password');
+  const btn = document.getElementById('auth-btn');
+  btn.textContent = 'Accesso…'; btn.disabled = true;
+  try {
+    await signInWithEmailAndPassword(auth, email, pass);
+    // onAuthStateChanged gestirà il resto
+  } catch(e) {
+    const msgs = {
+      'auth/invalid-credential':    'Email o password errati',
+      'auth/user-not-found':        'Utente non trovato',
+      'auth/wrong-password':        'Password errata',
+      'auth/too-many-requests':     'Troppi tentativi, riprova più tardi',
+      'auth/invalid-email':         'Email non valida',
+    };
+    showToast('⚠️ ' + (msgs[e.code] || e.message));
+  } finally {
+    btn.textContent = 'Accedi'; btn.disabled = false;
+  }
+}
+
+async function firebaseLogout() {
+  if (auth) await signOut(auth);
+  state.currentUser = null;
+  state.authUser = null;
+  if (unsubExpenses) { unsubExpenses(); unsubExpenses = null; }
+  switchTab('home');
 }
 
 initData();
@@ -1443,10 +1540,6 @@ async function createUser() {
 
 function loginAs(idx) {
   state.currentUser = idx;
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  document.getElementById('app').style.flexDirection = 'column';
-
   const u = state.users[idx];
   const av = document.getElementById('header-avatar');
   av.style.background = userColor(idx) + '25';
@@ -1454,18 +1547,22 @@ function loginAs(idx) {
   av.textContent = userInitial(u.name);
   document.getElementById('header-name').textContent = u.name;
   document.getElementById('home-username').textContent = u.name;
-
+  showScreen('app');
   renderHome();
   renderHistory();
   renderStats();
   renderShopping();
 }
 
-function logout() {
+async function logout() {
+  // Logout completo: esce da Firebase Auth
+  await firebaseLogout();
+}
+
+function switchProfile() {
+  // Torna alla scelta profilo senza fare logout Firebase
   state.currentUser = null;
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
-  switchTab('home');
+  showScreen('profile');
   renderLoginUsers();
 }
 
@@ -1992,7 +2089,7 @@ function showToast(msg) {
 
 // ==================== EXPOSE TO WINDOW (required for type=module) ====================
 Object.assign(window, {
-  createUser, loginAs, logout,
+  createUser, loginAs, logout, switchProfile, firebaseLogin,
   switchTab,
   openAddExpense, closeModal, selectType, toggleParticipant, saveExpense,
   deleteExpensePrompt, closeConfirm, confirmDelete,
