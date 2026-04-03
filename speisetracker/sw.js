@@ -1,4 +1,4 @@
-const CACHE_NAME = 'speisetracker-v5';
+const CACHE_NAME = 'speisetracker-v6';
 const ASSETS = [
   './',
   './index.html',
