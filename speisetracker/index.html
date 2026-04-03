@@ -1472,7 +1472,7 @@ async function fbDeleteExpense(id) {
 // Uso: ?key=XXXX&amount=42.50&desc=Supermercato
 const URL_PARAMS   = new URLSearchParams(window.location.search);
 const SHORTCUT_KEY = URL_PARAMS.get('key');
-const SHORTCUT_AMT = URL_PARAMS.get('amount');
+const SHORTCUT_AMT = URL_PARAMS.get('amount')?.replace(',', '.') || '';
 const SHORTCUT_DESC= URL_PARAMS.get('desc') || '';
 
 async function checkShortcutAccess() {
