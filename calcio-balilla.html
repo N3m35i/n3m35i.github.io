@@ -739,24 +739,39 @@ function generateNextMatch(prevMatch, winnerSide) {
 
   // n=5: winner stays, one loser swaps with resting player
   if (n === 5) {
-    const restingId = Array.isArray(prevMatch.resting)
-      ? prevMatch.resting[0]
-      : prevMatch.resting;
-
-    // If resting is null/missing, pick whoever from presentIds is not in either team
+    // Always derive resting from who is NOT in the actual match teams (handles manual overrides)
     const playingIds = [...prevMatch.team1, ...prevMatch.team2].map(p => p.id);
-    const actualRestingId = restingId || session.presentIds.find(id => !playingIds.includes(id));
+    const actualRestingId = session.presentIds.find(id => !playingIds.includes(id));
 
     if (!actualRestingId) {
-      // Fallback: can't determine resting, keep same teams
       return { team1: prevMatch.team1, team2: prevMatch.team2, resting: null };
     }
 
     const rc = session.restCounts || {};
-    const loserToSwap = loserTeam.slice().sort((a,b) => (rc[a.id]||0) - (rc[b.id]||0))[0];
+    // Pick loser to swap: the one who has rested least (not the resting player themselves)
+    const loserCandidates = loserTeam.filter(p => p.id !== actualRestingId);
+    if (!loserCandidates.length) {
+      return { team1: winnerTeam, team2: loserTeam, resting: actualRestingId };
+    }
+    const loserToSwap = loserCandidates.slice().sort((a,b) => (rc[a.id]||0) - (rc[b.id]||0))[0];
+
     const newChallenger = fixRoles(loserTeam.map(p =>
       p.id === loserToSwap.id ? { id: actualRestingId, role: p.role } : p
     ));
+
+    // Safety: ensure no duplicate ids in newChallenger
+    const challengerIds = newChallenger.map(p => p.id);
+    if (new Set(challengerIds).size < 2) {
+      // Fallback: just swap the first loser with the resting
+      const fallback = [
+        { id: actualRestingId, role: loserTeam[0].role },
+        { id: loserTeam[1].id, role: loserTeam[1].role },
+      ];
+      session.restCounts = { ...rc, [loserTeam[0].id]: (rc[loserTeam[0].id]||0) + 1 };
+      const newResting = loserTeam[0].id;
+      return { team1: winnerTeam, team2: fixRoles(fallback), resting: newResting };
+    }
+
     session.restCounts = { ...rc, [loserToSwap.id]: (rc[loserToSwap.id]||0) + 1 };
     return { team1: winnerTeam, team2: newChallenger, resting: loserToSwap.id };
   }
@@ -1420,13 +1435,6 @@ window.editMatch = function(idx) {
     ${buildTeamEditor('team1', 'squadra A')}
     <div class="divider" style="margin:12px 0;"></div>
     ${buildTeamEditor('team2', 'squadra B')}
-    <div style="margin-top:12px;">
-      <div class="label" style="margin-bottom:8px;">chi riposa</div>
-      <select id="edit-resting" style="width:100%;">
-        <option value="">nessuno</option>
-        ${allIds.map(id => `<option value="${id}" ${match.resting === id ? 'selected' : ''}>${getPlayer(id).name}</option>`).join('')}
-      </select>
-    </div>
     <div style="display:flex;gap:8px;margin-top:16px;">
       <button class="btn btn-primary" style="flex:1;" onclick="saveEditMatch(${idx})">salva</button>
       <button class="btn btn-secondary" style="flex:1;" onclick="closeModalForce()">annulla</button>
@@ -1455,15 +1463,16 @@ window.saveEditMatch = function(idx) {
   match.team1 = t1;
   match.team2 = t2;
 
-  // Resting: preserve original array structure if n>5, otherwise single id
-  const restingVal = get('edit-resting') || null;
+  // Recompute resting from actual teams — whoever in presentIds is not playing
   const n = session.presentIds.length;
+  const nowPlaying = new Set([t1[0].id, t1[1].id, t2[0].id, t2[1].id]);
+  const nowResting = session.presentIds.filter(id => !nowPlaying.has(id));
+
   if (n <= 5) {
-    match.resting = restingVal;
+    match.resting = nowResting[0] || null;
   } else {
-    // For n>5, resting is managed by the engine — don't overwrite with a single id
-    // Only update if it was already a simple value
-    if (!Array.isArray(match.resting)) match.resting = restingVal;
+    // For n>5, update resting list but keep as array
+    match.resting = nowResting.length > 0 ? nowResting : null;
   }
 
   saveSession();
