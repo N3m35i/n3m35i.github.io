@@ -283,6 +283,7 @@
       <span class="op-name">Estrai</span>
       <span class="op-desc">Estrai pagine specifiche in un nuovo PDF</span>
     </div>
+
   </div>
 
   <!-- ══════════════════════════════════════════════ -->
@@ -490,7 +491,7 @@ function setupDZ(id, handler) {
 setupDZ('dz-merge',   files => addMergeFiles(files));
 setupDZ('dz-split',   files => loadSingle(files[0], 'split'));
 setupDZ('dz-pages',   files => loadSingle(files[0], 'pages'));
-setupDZ('dz-extract', files => loadSingle(files[0], 'extract'));
+setupDZ('dz-extract',  files => loadSingle(files[0], 'extract'));
 
 // ═══════════════════════════════════════════
 //  MERGE
@@ -504,7 +505,7 @@ async function addMergeFiles(files) {
     // Count pages
     let pages = '?';
     try {
-      const doc = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+      const doc = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true, throwOnInvalidObject: false, parseSpeed: PDFLib.ParseSpeeds.Slow });
       pages = doc.getPageCount();
     } catch(e) {}
     mergeFiles.push({ name: f.name, bytes, pages });
@@ -553,7 +554,7 @@ async function runMerge() {
   try {
     const merged = await PDFLib.PDFDocument.create();
     for (const f of mergeFiles) {
-      const doc = await PDFLib.PDFDocument.load(f.bytes, { ignoreEncryption: true });
+      const doc = await PDFLib.PDFDocument.load(f.bytes.slice(), { ignoreEncryption: true, throwOnInvalidObject: false, parseSpeed: PDFLib.ParseSpeeds.Slow });
       const pages = await merged.copyPages(doc, doc.getPageIndices());
       pages.forEach(p => merged.addPage(p));
     }
@@ -562,7 +563,7 @@ async function runMerge() {
     downloadBytes(outBytes, 'merged.pdf');
     showStatus('merge', 'success', `✅ PDF unito con successo — ${total} pagine totali.`);
   } catch(e) {
-    showStatus('merge', 'error', '❌ ' + e.message);
+    showStatus('merge', 'error', '❌ [merge] ' + e.message);
   }
   setBusy('merge', false);
 }
@@ -570,19 +571,144 @@ async function runMerge() {
 // ═══════════════════════════════════════════
 //  SINGLE FILE LOAD
 // ═══════════════════════════════════════════
+// ═══════════════════════════════════════════
+//  DE-LINEARIZE: rebuild PDF using PDF.js reader
+//  + pdf-lib writer. Fixes linearized large PDFs.
+// ═══════════════════════════════════════════
+async function delinearize(bytes) {
+  // Check if linearized
+  const head = new TextDecoder('latin1').decode(bytes.slice(0, 1024));
+  const isLinearized = head.includes('Linearized');
+
+  // First try direct pdf-lib load (works for most PDFs)
+  try {
+    const test = await PDFLib.PDFDocument.load(bytes, {
+      ignoreEncryption: true,
+      throwOnInvalidObject: false,
+      parseSpeed: PDFLib.ParseSpeeds.Slow
+    });
+    return bytes; // works fine, return as-is
+  } catch(e) {
+    if (!isLinearized) throw e; // not linearized, real error
+  }
+
+  // Linearized PDF that pdf-lib can't handle:
+  // Rebuild by rendering each page to canvas via PDF.js,
+  // then embedding the canvas images into a new pdf-lib doc.
+  // This is lossy but always works.
+  // Show loading message in all single-op status boxes
+  ['split','pages','extract'].forEach(op => { try { showStatus(op, 'info', '⏳ PDF linearizzato rilevato — ricostruzione in corso. Attendere…'); } catch(e) {} });
+
+  const pdfjs   = await pdfjsLib.getDocument({ data: bytes, disableAutoFetch: true, disableStream: true }).promise;
+  const numPages = pdfjs.numPages;
+  const newDoc  = await PDFLib.PDFDocument.create();
+  const scale   = 2.0; // 2x for quality
+
+  for (let i = 1; i <= numPages; i++) {
+    const page     = await pdfjs.getPage(i);
+    const viewport = page.getViewport({ scale });
+    const canvas   = document.createElement('canvas');
+    canvas.width   = viewport.width;
+    canvas.height  = viewport.height;
+    const ctx      = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    // Embed as JPEG
+    const jpegUrl   = canvas.toDataURL('image/jpeg', 0.92);
+    const jpegBytes = dataUrlToBytes(jpegUrl);
+    const img       = await newDoc.embedJpg(jpegBytes);
+
+    // Page size: convert pixels at 150dpi to points (1pt = 1/72 inch)
+    const ptW = (viewport.width  / scale) / 150 * 72;
+    const ptH = (viewport.height / scale) / 150 * 72;
+    const newPage = newDoc.addPage([ptW, ptH]);
+    newPage.drawImage(img, { x: 0, y: 0, width: ptW, height: ptH });
+  }
+
+  const rebuilt = await newDoc.save();
+  return new Uint8Array(rebuilt);
+}
+
+function dataUrlToBytes(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  const bin    = atob(base64);
+  const arr    = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
+
 function onSingleFile(input, op) { if (input.files[0]) loadSingle(input.files[0], op); input.value = ''; }
 
 async function loadSingle(file, op) {
   if (!file || !file.name.toLowerCase().endsWith('.pdf')) return;
-  singleBytes = new Uint8Array(await file.arrayBuffer());
-  singleName  = file.name.replace(/\.pdf$/i, '');
+  const rawBytes = new Uint8Array(await file.arrayBuffer());
+  const rawBytesCopy = rawBytes.slice(); // preserve for compress
+  singleName = file.name.replace(/\.pdf$/i, '');
 
+  // Show loading indicator
+  showStatus(op, 'info', '⏳ Caricamento PDF in corso…');
+
+  // Step 1: use PDF.js to get page count — works on ALL PDFs including linearized
+  // IMPORTANT: copy buffer before each PDF.js call — it gets detached after use
   try {
-    const doc = await PDFLib.PDFDocument.load(singleBytes, { ignoreEncryption: true });
-    singlePages = doc.getPageCount();
+    const pdfjsDoc = await pdfjsLib.getDocument({
+      data: rawBytes.slice(), disableAutoFetch: true, disableStream: true
+    }).promise;
+    singlePages = pdfjsDoc.numPages;
   } catch(e) {
-    showStatus(op, 'error', '❌ Impossibile leggere il PDF: ' + e.message); return;
+    showStatus(op, 'error', '❌ Impossibile leggere il PDF con PDF.js: ' + e.message); return;
   }
+
+  // Step 2: try to give pdf-lib a loadable version
+  // First try direct load
+  let pdfLibOk = false;
+  const copyForPdfLib = rawBytes.slice();
+  try {
+    await PDFLib.PDFDocument.load(copyForPdfLib, {
+      ignoreEncryption: true, throwOnInvalidObject: false,
+      parseSpeed: PDFLib.ParseSpeeds.Slow
+    });
+    singleBytes = Array.from(copyForPdfLib); // store as Array — never detaches
+    pdfLibOk = true;
+  } catch(e) {
+    // pdf-lib can't load directly — need to rebuild via PDF.js rendering
+  }
+
+  if (!pdfLibOk) {
+    // Rebuild: render each page via PDF.js and embed as image
+    showStatus(op, 'info', '⏳ PDF non compatibile direttamente — ricostruzione in corso (' + singlePages + ' pagine). Attendere…');
+    try {
+      const pdfjsDoc = await pdfjsLib.getDocument({
+        data: rawBytes.slice(), disableAutoFetch: true, disableStream: true
+      }).promise;
+      const newDoc = await PDFLib.PDFDocument.create();
+      const scale  = 2.0;
+
+      for (let i = 1; i <= singlePages; i++) {
+        showStatus(op, 'info', '⏳ Ricostruzione pagina ' + i + ' / ' + singlePages + '…');
+        const page     = await pdfjsDoc.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas   = document.createElement('canvas');
+        canvas.width   = viewport.width;
+        canvas.height  = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+        const jpegBytes = dataUrlToBytes(canvas.toDataURL('image/jpeg', 0.92));
+        const img       = await newDoc.embedJpg(jpegBytes);
+        const ptW = (viewport.width  / scale) / 150 * 72;
+        const ptH = (viewport.height / scale) / 150 * 72;
+        const newPage = newDoc.addPage([ptW, ptH]);
+        newPage.drawImage(img, { x: 0, y: 0, width: ptW, height: ptH });
+      }
+
+      singleBytes = Array.from(new Uint8Array(await newDoc.save())); // store as Array
+    } catch(e) {
+      showStatus(op, 'error', '❌ Ricostruzione fallita: ' + e.message); return;
+    }
+  }
+
+  clearStatus(op);
 
   if (op === 'split') {
     document.getElementById('dz-split').style.display = 'none';
@@ -599,6 +725,7 @@ async function loadSingle(file, op) {
     document.getElementById('pages-btn').disabled = false;
     await initPagesEditor();
   }
+
 }
 
 // ═══════════════════════════════════════════
@@ -640,7 +767,7 @@ function renderVisualGrid(gridId, op) {
 
 async function renderVisualThumbs(op) {
   let pdfDoc;
-  try { pdfDoc = await pdfjsLib.getDocument({ data: singleBytes }).promise; } catch(e) { return; }
+  try { pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(singleBytes) }).promise; } catch(e) { return; }
   for (let i = 0; i < singlePages; i++) {
     if (!visualThumbs[i]) {
       try {
@@ -789,7 +916,7 @@ async function runSplit() {
       groupsToProcess = ranges.map(([from,to]) => { const a=[]; for(let i=from;i<=to;i++) a.push(i); return a; });
     }
 
-    const src = await PDFLib.PDFDocument.load(singleBytes, { ignoreEncryption: true });
+    const src = await PDFLib.PDFDocument.load(new Uint8Array(singleBytes), { ignoreEncryption: true, throwOnInvalidObject: false, parseSpeed: PDFLib.ParseSpeeds.Slow });
     for (let gi = 0; gi < groupsToProcess.length; gi++) {
       const indices = groupsToProcess[gi];
       const out = await PDFLib.PDFDocument.create();
@@ -802,7 +929,7 @@ async function runSplit() {
     }
     showStatus('split', 'success', `✅ Creati ${groupsToProcess.length} file PDF.`);
   } catch(e) {
-    showStatus('split', 'error', '❌ ' + e.message);
+    showStatus('split', 'error', '❌ [split] ' + e.message);
   }
   setBusy('split', false);
 }
@@ -852,7 +979,7 @@ function renderPageGrid() {
 
 async function renderThumbnails() {
   let pdfDoc;
-  try { pdfDoc = await pdfjsLib.getDocument({ data: singleBytes }).promise; }
+  try { pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(singleBytes) }).promise; }
   catch(e) { return; }
 
   const visible = pageList.filter(p => !p.deleted);
@@ -961,7 +1088,7 @@ async function runPages() {
   setBusy('pages', true);
   clearStatus('pages');
   try {
-    const src = await PDFLib.PDFDocument.load(singleBytes, { ignoreEncryption: true });
+    const src = await PDFLib.PDFDocument.load(new Uint8Array(singleBytes), { ignoreEncryption: true, throwOnInvalidObject: false, parseSpeed: PDFLib.ParseSpeeds.Slow });
     const out = await PDFLib.PDFDocument.create();
     const active = pageList.filter(p => !p.deleted);
     if (!active.length) throw new Error('Nessuna pagina rimasta.');
@@ -979,7 +1106,7 @@ async function runPages() {
     downloadBytes(bytes, `${singleName}_edited.pdf`);
     showStatus('pages', 'success', `✅ PDF salvato — ${active.length} pagine.`);
   } catch(e) {
-    showStatus('pages', 'error', '❌ ' + e.message);
+    showStatus('pages', 'error', '❌ [pages] ' + e.message);
   }
   setBusy('pages', false);
 }
@@ -1027,7 +1154,7 @@ async function runExtract() {
     }
     if (!indices.length) throw new Error('Nessuna pagina selezionata.');
 
-    const src = await PDFLib.PDFDocument.load(singleBytes, { ignoreEncryption: true });
+    const src = await PDFLib.PDFDocument.load(new Uint8Array(singleBytes), { ignoreEncryption: true, throwOnInvalidObject: false, parseSpeed: PDFLib.ParseSpeeds.Slow });
     const out = await PDFLib.PDFDocument.create();
     const pages = await out.copyPages(src, indices);
     pages.forEach(p => out.addPage(p));
@@ -1035,7 +1162,7 @@ async function runExtract() {
     downloadBytes(bytes, `${singleName}_estratte.pdf`);
     showStatus('extract', 'success', `✅ Estratte ${indices.length} pagine in un nuovo PDF.`);
   } catch(e) {
-    showStatus('extract', 'error', '❌ ' + e.message);
+    showStatus('extract', 'error', '❌ [extract] ' + e.message);
   }
   setBusy('extract', false);
 }
@@ -1061,6 +1188,14 @@ function parseRanges(raw, total) {
 // ═══════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════
+function formatSize(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
 function downloadBytes(bytes, name) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const url  = URL.createObjectURL(blob);
