@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>DDCT — Addestratore Tiro Dinamico Cognitivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0C;
+  --panel:#17181C;
+  --panel-2:#1F2126;
+  --border:#2A2C32;
+  --text:#F2F1EC;
+  --text-dim:#8B8F96;
+  --text-faint:#54575E;
+  --accent:#28C7D6;
+  --accent-dim:#1A3E42;
+  --danger:#E8342A;
+  --danger-dim:#3A1512;
+  --ok:#2ECC55;
+  --plate:#EDE9DE;
+  --plate-2:#E2DCCC;
+  --t-red:#D8291D;
+  --t-green:#1E9E4C;
+  --t-yellow:#D6A400;
+  --t-blue:#1D5FD1;
+  --t-black:#111213;
+  --radius:14px;
+  --font-display:'Archivo Black', sans-serif;
+  --font-body:'Inter', sans-serif;
+  --font-mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:var(--font-body);
+  overscroll-behavior:none; user-select:none;
+  -webkit-user-select:none;
+  min-height:100vh; min-height:100dvh;
+  padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
+}
+button{font-family:inherit; -webkit-appearance:none; appearance:none; border:none; cursor:pointer;}
+input,select{font-family:inherit;}
+.screen{display:none; min-height:100vh; min-height:100dvh; flex-direction:column;}
+.screen.active{display:flex;}
+
+/* ---------- shared chrome ---------- */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 20px; border-bottom:1px solid var(--border);
+}
+.topbar h1{font-family:var(--font-display); font-size:15px; letter-spacing:0.03em; margin:0; color:var(--text);}
+.topbar .eyebrow{font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-faint); display:block; margin-bottom:2px;}
+.icon-btn{
+  width:40px; height:40px; border-radius:10px; background:var(--panel);
+  display:flex; align-items:center; justify-content:center; color:var(--text-dim);
+  font-size:18px; border:1px solid var(--border);
+}
+.icon-btn:active{background:var(--panel-2);}
+.content{flex:1; padding:20px; overflow-y:auto;}
+
+/* ---------- home ---------- */
+#screen-home .content{display:flex; flex-direction:column; gap:14px; padding-top:6px;}
+.brand{padding:28px 4px 8px;}
+.brand .eyebrow{font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); margin-bottom:8px;}
+.brand h1{font-family:var(--font-display); font-size:30px; line-height:1.05; margin:0; letter-spacing:-0.01em;}
+.brand p{color:var(--text-dim); font-size:13.5px; margin:10px 0 0; line-height:1.5; max-width:34ch;}
+
+.mode-card{
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+  padding:20px; text-align:left; display:flex; flex-direction:column; gap:6px;
+  transition:border-color .15s;
+}
+.mode-card:active{border-color:var(--accent);}
+.mode-card .tag{font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--accent); font-weight:700;}
+.mode-card h2{font-family:var(--font-display); font-size:20px; margin:2px 0 0;}
+.mode-card p{color:var(--text-dim); font-size:13px; margin:6px 0 0; line-height:1.5;}
+
+.row-links{display:flex; gap:12px; margin-top:6px;}
+.link-card{
+  flex:1; background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:14px; text-align:center; font-size:12.5px; color:var(--text-dim); font-weight:600;
+}
+.link-card:active{background:var(--panel-2);}
+
+/* ---------- settings ---------- */
+.settings-group{margin-bottom:26px;}
+.settings-group h3{font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent); margin:0 0 12px; font-weight:700;}
+.field{margin-bottom:16px;}
+.field-label{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+.field-label span{font-size:13.5px; font-weight:600;}
+.field-label .val{font-family:var(--font-mono); font-size:12.5px; color:var(--accent); font-weight:700;}
+.field-desc{font-size:12px; color:var(--text-faint); margin:-4px 0 8px; line-height:1.4;}
+
+.toggle-row{
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:14px 16px; margin-bottom:10px;
+}
+.toggle-row .lab{font-size:14px; font-weight:600;}
+.toggle-row .sub{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+.switch{position:relative; width:46px; height:27px; flex-shrink:0; margin-left:12px;}
+.switch input{opacity:0; width:100%; height:100%; position:absolute; margin:0; cursor:pointer;}
+.switch .track{position:absolute; inset:0; background:var(--panel-2); border:1px solid var(--border); border-radius:20px; transition:.15s;}
+.switch .knob{position:absolute; top:3px; left:3px; width:19px; height:19px; border-radius:50%; background:var(--text-dim); transition:.15s;}
+.switch input:checked + .track{background:var(--accent-dim); border-color:var(--accent);}
+.switch input:checked + .track .knob{transform:translateX(19px); background:var(--accent);}
+
+.chip-grid{display:flex; flex-wrap:wrap; gap:8px;}
+.chip{
+  padding:9px 14px; border-radius:10px; background:var(--panel); border:1px solid var(--border);
+  font-size:13px; font-weight:600; color:var(--text-dim);
+}
+.chip.on{background:var(--accent-dim); border-color:var(--accent); color:var(--accent);}
+.chip.color-chip{display:flex; align-items:center; gap:8px;}
+.chip .dot{width:12px; height:12px; border-radius:50%; display:inline-block;}
+.chip.shape-chip svg{width:16px; height:16px; display:block;}
+
+input[type=range]{
+  -webkit-appearance:none; width:100%; height:4px; border-radius:2px; background:var(--panel-2); outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:var(--accent); cursor:pointer;
+  border:3px solid var(--bg); box-shadow:0 0 0 1px var(--accent);
+}
+input[type=range]::-moz-range-thumb{
+  width:22px; height:22px; border-radius:50%; background:var(--accent); cursor:pointer; border:3px solid var(--bg);
+}
+
+.btn{
+  display:block; width:100%; text-align:center; padding:16px; border-radius:12px;
+  font-size:14.5px; font-weight:700; letter-spacing:0.01em;
+}
+.btn-primary{background:var(--accent); color:#062226;}
+.btn-primary:active{opacity:.85;}
+.btn-ghost{background:var(--panel); color:var(--text); border:1px solid var(--border);}
+.btn-ghost:active{background:var(--panel-2);}
+.btn-danger{background:var(--danger-dim); color:var(--danger); border:1px solid var(--danger);}
+.mic-test{
+  background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px;
+}
+.mic-meter{height:14px; background:var(--panel-2); border-radius:7px; overflow:hidden; margin-top:12px; position:relative;}
+.mic-meter-fill{height:100%; width:0%; background:linear-gradient(90deg, var(--accent), var(--ok)); transition:width .04s linear;}
+.mic-meter-threshold{position:absolute; top:0; bottom:0; width:2px; background:var(--danger);}
+.mic-status{font-size:12px; color:var(--text-faint); margin-top:8px;}
+.mic-status.live{color:var(--ok);}
+.mic-status.shot{color:var(--danger); font-weight:700;}
+
+/* ---------- session ---------- */
+#screen-session{background:var(--bg);}
+.session-status{
+  display:flex; align-items:center; justify-content:space-between; padding:14px 20px;
+  font-family:var(--font-mono); font-size:12px; color:var(--text-faint);
+}
+.session-status .mode-pill{
+  background:var(--panel); border:1px solid var(--border); padding:5px 10px; border-radius:8px;
+  text-transform:uppercase; letter-spacing:0.08em; font-size:10.5px; color:var(--accent); font-weight:700;
+}
+.stage{
+  flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column;
+  position:relative; padding:20px;
+}
+.stage-msg{font-family:var(--font-display); font-size:22px; text-align:center; color:var(--text-dim); letter-spacing:0.01em;}
+.stage-msg.big{font-size:34px; color:var(--text);}
+.stage-sub{font-size:13.5px; color:var(--text-faint); margin-top:10px; text-align:center;}
+
+.target-plate{
+  position:fixed; inset:0; background:var(--plate); display:none;
+  align-items:center; justify-content:center; z-index:5;
+}
+.target-plate.show{display:flex;}
+.target-figure{display:flex; flex-direction:column; align-items:center; justify-content:center;}
+.target-number{font-family:var(--font-display); font-size:min(58vw,420px); line-height:1; color:var(--fig-color, var(--t-black));}
+.target-symbol svg{width:min(58vw,420px); height:min(58vw,420px); display:block;}
+
+.count-hud{
+  position:fixed; top:0; left:0; right:0; padding:16px 20px; padding-top:calc(16px + env(safe-area-inset-top));
+  display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:12px;
+  color:rgba(0,0,0,.45); z-index:6; pointer-events:none; font-weight:700;
+}
+
+.timer-hud{
+  position:fixed; inset:0; background:var(--bg); z-index:4; display:none;
+  flex-direction:column; align-items:center; justify-content:space-between; padding:24px;
+  padding-top:calc(24px + env(safe-area-inset-top)); padding-bottom:calc(24px + env(safe-area-inset-bottom));
+}
+.timer-hud.show{display:flex;}
+.timer-hud .top-info{width:100%; display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:12px; color:var(--text-faint);}
+.timer-center{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+.timer-clock{font-family:var(--font-mono); font-size:64px; font-weight:700; color:var(--text); letter-spacing:0.01em;}
+.timer-clock .ms{color:var(--text-faint); font-size:34px;}
+.shot-count{font-size:14px; color:var(--accent); font-weight:700; margin-top:14px; letter-spacing:0.04em;}
+.last-splits{display:flex; gap:8px; margin-top:20px; flex-wrap:wrap; justify-content:center; max-width:340px;}
+.last-splits .sp{background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-family:var(--font-mono); font-size:12px; color:var(--text-dim);}
+.stop-btn{
+  width:100%; max-width:340px; padding:22px; border-radius:16px; background:var(--danger); color:#fff;
+  font-family:var(--font-display); font-size:18px; letter-spacing:0.02em;
+}
+.stop-btn:active{opacity:.85;}
+.ready-btn{
+  width:min(78vw,340px); height:min(78vw,340px); border-radius:50%; background:var(--panel);
+  border:2px solid var(--border); color:var(--text); font-family:var(--font-display); font-size:22px;
+  display:flex; align-items:center; justify-content:center; letter-spacing:0.02em;
+}
+.ready-btn:active{border-color:var(--accent); color:var(--accent);}
+.standby-dot{
+  width:22px; height:22px; border-radius:50%; background:var(--danger); margin-bottom:22px;
+  animation:pulse 1s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+/* ---------- results ---------- */
+.result-hero{text-align:center; padding:20px 0 8px;}
+.result-hero .eyebrow{font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:var(--text-faint);}
+.result-hero .total{font-family:var(--font-mono); font-size:52px; font-weight:700; color:var(--accent); margin-top:6px;}
+.seq-recap{display:flex; gap:8px; overflow-x:auto; padding:16px 2px; margin-bottom:6px;}
+.seq-chip{
+  flex-shrink:0; width:50px; height:50px; border-radius:10px; background:var(--plate);
+  display:flex; align-items:center; justify-content:center; position:relative;
+}
+.seq-chip .idx{position:absolute; top:-6px; left:-6px; background:var(--panel-2); color:var(--text-dim); font-family:var(--font-mono); font-size:9px; border-radius:6px; padding:1px 4px; border:1px solid var(--border);}
+.seq-chip .num{font-family:var(--font-display); font-size:22px;}
+.seq-chip svg{width:26px; height:26px;}
+
+table.shots{width:100%; border-collapse:collapse; margin-top:10px;}
+table.shots th{
+  text-align:left; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint);
+  padding:8px 6px; border-bottom:1px solid var(--border); font-weight:700;
+}
+table.shots td{
+  padding:11px 6px; border-bottom:1px solid var(--border); font-family:var(--font-mono); font-size:14px;
+}
+table.shots td.time{color:var(--text); font-weight:700;}
+table.shots td.split{color:var(--accent);}
+.result-actions{display:flex; gap:10px; margin-top:20px;}
+
+/* ---------- history ---------- */
+.hist-item{
+  background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px;
+}
+.hist-item .hrow{display:flex; justify-content:space-between; align-items:baseline;}
+.hist-item .hmode{font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); font-weight:700;}
+.hist-item .hdate{font-size:11px; color:var(--text-faint); font-family:var(--font-mono);}
+.hist-item .htotal{font-family:var(--font-mono); font-size:22px; font-weight:700; margin-top:6px;}
+.hist-item .hsub{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+.empty-state{text-align:center; padding:60px 20px; color:var(--text-faint);}
+.empty-state .ic{font-size:32px; margin-bottom:10px;}
+.empty-state p{font-size:13.5px; line-height:1.5; max-width:28ch; margin:6px auto 0;}
+</style>
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<section class="screen active" id="screen-home">
+  <div class="content">
+    <div class="brand">
+      <span class="eyebrow">Addestratore · Tiro Dinamico Cognitivo</span>
+      <h1>DDCT Trainer</h1>
+      <p>Sequenze memory o reaction, cronometraggio colpi via microfono, split time e storico sessioni.</p>
+    </div>
+
+    <button class="mode-card" data-nav="session" data-mode="memory">
+      <span class="tag">Modalità 1</span>
+      <h2>Memory</h2>
+      <p>Vedi la sequenza, poi sparisce. Standby casuale, beep, e ricordi l'ordine mentre tiri.</p>
+    </button>
+
+    <button class="mode-card" data-nav="session" data-mode="reaction">
+      <span class="tag">Modalità 2</span>
+      <h2>Reaction</h2>
+      <p>Beep di via, i target appaiono uno alla volta, secondo beep e parti in cronometraggio.</p>
+    </button>
+
+    <div class="row-links">
+      <button class="link-card" data-nav="settings">⚙ Impostazioni</button>
+      <button class="link-card" data-nav="history">☰ Storico</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section class="screen" id="screen-settings">
+  <div class="topbar">
+    <div><span class="eyebrow">Configurazione</span><h1>Impostazioni</h1></div>
+    <button class="icon-btn" data-nav="home">✕</button>
+  </div>
+  <div class="content">
+
+    <div class="mic-test">
+      <div class="field-label"><span>Test microfono</span></div>
+      <div class="field-desc">Attiva e produci un rumore/sparo di prova per tarare la sensibilità sul tuo ambiente reale.</div>
+      <button class="btn btn-ghost" id="btn-mic-test" style="margin-top:2px;">Avvia test microfono</button>
+      <div class="mic-meter"><div class="mic-meter-fill" id="mic-meter-fill"></div><div class="mic-meter-threshold" id="mic-meter-threshold"></div></div>
+      <div class="mic-status" id="mic-status">Microfono non attivo.</div>
+      <button class="btn btn-ghost" id="btn-sim-shot-settings" style="margin-top:10px;">＋ Simula colpo (test)</button>
+    </div>
+
+    <div class="settings-group">
+      <h3>Rilevamento sparo</h3>
+      <div class="field">
+        <div class="field-label"><span>Sensibilità</span><span class="val" id="v-sens">70</span></div>
+        <div class="field-desc">Più alta = rileva colpi più deboli/lontani, ma più rischio di falsi positivi (rumore ambiente).</div>
+        <input type="range" id="s-sens" min="1" max="100" value="70">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Finestra minima tra colpi</span><span class="val" id="v-refr">110 ms</span></div>
+        <div class="field-desc">Tempo minimo dopo un colpo prima di poterne rilevare un altro (evita doppi conteggi da eco/riverbero).</div>
+        <input type="range" id="s-refr" min="60" max="300" step="5" value="110">
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>Elementi target</h3>
+
+      <div class="toggle-row">
+        <div><div class="lab">Numeri</div><div class="sub">Usa cifre singole come target</div></div>
+        <label class="switch"><input type="checkbox" id="t-numbers" checked><span class="track"><span class="knob"></span></span></label>
+      </div>
+      <div class="field" id="wrap-numbers">
+        <div class="field-desc" style="margin-top:-6px;">Cifre attive nel pool:</div>
+        <div class="chip-grid" id="grid-numbers"></div>
+      </div>
+
+      <div class="toggle-row">
+        <div><div class="lab">Simboli</div><div class="sub">Usa forme come target</div></div>
+        <label class="switch"><input type="checkbox" id="t-symbols" checked><span class="track"><span class="knob"></span></span></label>
+      </div>
+      <div class="field" id="wrap-symbols">
+        <div class="field-desc" style="margin-top:-6px;">Simboli attivi nel pool:</div>
+        <div class="chip-grid" id="grid-symbols"></div>
+      </div>
+
+      <div class="toggle-row">
+        <div><div class="lab">Colori</div><div class="sub">Controllo master — se disattivo, tutto è nero</div></div>
+        <label class="switch"><input type="checkbox" id="t-colors" checked><span class="track"><span class="knob"></span></span></label>
+      </div>
+      <div class="field" id="wrap-colors">
+        <div class="field-desc" style="margin-top:-6px;">Colori attivi nel pool:</div>
+        <div class="chip-grid" id="grid-colors"></div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>Sequenza</h3>
+      <div class="field">
+        <div class="field-label"><span>Numero di target per round</span><span class="val" id="v-count">5</span></div>
+        <input type="range" id="s-count" min="1" max="15" value="5">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Tempo esposizione target — Memory</span><span class="val" id="v-expo">0.7 s</span></div>
+        <div class="field-desc">Quanto resta visibile ogni target durante la sequenza in modalità Memory.</div>
+        <input type="range" id="s-expo" min="0.2" max="2.5" step="0.1" value="0.7">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Intervallo tra target — Reaction</span><span class="val" id="v-inter">0.5 s</span></div>
+        <div class="field-desc">Tempo tra la comparsa di un target e il successivo in modalità Reaction.</div>
+        <input type="range" id="s-inter" min="0.2" max="2.5" step="0.1" value="0.5">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Standby casuale (min–max)</span><span class="val" id="v-standby">1.0 – 7.0 s</span></div>
+        <div class="field-desc">Durata random dell'attesa prima del beep di via.</div>
+        <input type="range" id="s-standby-min" min="0.5" max="7" step="0.5" value="1" style="margin-bottom:10px;">
+        <input type="range" id="s-standby-max" min="0.5" max="10" step="0.5" value="7">
+      </div>
+    </div>
+
+    <button class="btn btn-ghost" id="btn-reset-settings">Ripristina valori predefiniti</button>
+  </div>
+</section>
+
+<!-- ============ SESSION ============ -->
+<section class="screen" id="screen-session">
+  <div class="session-status">
+    <span class="mode-pill" id="session-mode-pill">MEMORY</span>
+    <button class="icon-btn" data-nav="home" id="btn-session-exit">✕</button>
+  </div>
+
+  <div class="stage" id="session-stage">
+    <div class="stage-msg big" id="stage-msg">Pronto?</div>
+    <div class="stage-sub" id="stage-sub">Tocca per iniziare il round. Verrà chiesto l'accesso al microfono.</div>
+    <button class="ready-btn" id="btn-ready" style="margin-top:32px;">READY</button>
+  </div>
+
+  <div class="count-hud" id="count-hud" style="display:none;">
+    <span id="hud-round"></span><span id="hud-progress"></span>
+  </div>
+  <div class="target-plate" id="target-plate">
+    <div class="target-figure" id="target-figure"></div>
+  </div>
+
+  <div class="timer-hud" id="timer-hud">
+    <div class="top-info"><span id="timer-mode-label">MEMORY</span><span id="timer-elements-label"></span></div>
+    <div class="timer-center">
+      <div class="timer-clock" id="timer-clock">0.00<span class="ms"></span></div>
+      <div class="shot-count" id="shot-count">0 COLPI</div>
+      <div class="last-splits" id="last-splits"></div>
+    </div>
+    <button class="btn btn-ghost" id="btn-sim-shot" style="margin-bottom:10px;">＋ Simula colpo (test)</button>
+    <button class="stop-btn" id="btn-stop">STOP</button>
+  </div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section class="screen" id="screen-results">
+  <div class="topbar">
+    <div><span class="eyebrow">Round completato</span><h1 id="results-title">Risultato</h1></div>
+    <button class="icon-btn" data-nav="home">✕</button>
+  </div>
+  <div class="content">
+    <div class="result-hero">
+      <div class="eyebrow">Tempo totale</div>
+      <div class="total" id="result-total">0.00</div>
+    </div>
+
+    <div class="field-desc" style="margin-bottom:2px;">Sequenza ordinata:</div>
+    <div class="seq-recap" id="seq-recap"></div>
+
+    <table class="shots" id="shots-table">
+      <thead><tr><th>Colpo</th><th>Tempo</th><th>Split</th></tr></thead>
+      <tbody id="shots-tbody"></tbody>
+    </table>
+
+    <div class="result-actions">
+      <button class="btn btn-primary" id="btn-again">Nuovo round</button>
+      <button class="btn btn-ghost" data-nav="home">Home</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section class="screen" id="screen-history">
+  <div class="topbar">
+    <div><span class="eyebrow">Registro</span><h1>Storico sessioni</h1></div>
+    <button class="icon-btn" data-nav="home">✕</button>
+  </div>
+  <div class="content" id="history-content"></div>
+</section>
+
+<script>
+(function(){
+"use strict";
+
+/* ===================== CONSTANTS ===================== */
+const SYMBOLS = {
+  square:   {label:"Quadrato", svg:(c)=>`<svg viewBox="0 0 100 100"><rect x="14" y="14" width="72" height="72" fill="${c}"/></svg>`},
+  diamond:  {label:"Rombo",    svg:(c)=>`<svg viewBox="0 0 100 100"><polygon points="50,6 94,50 50,94 6,50" fill="${c}"/></svg>`},
+  circle:   {label:"Cerchio",  svg:(c)=>`<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="${c}"/></svg>`},
+  triangle: {label:"Triangolo",svg:(c)=>`<svg viewBox="0 0 100 100"><polygon points="50,8 94,88 6,88" fill="${c}"/></svg>`},
+  plus:     {label:"Croce",    svg:(c)=>`<svg viewBox="0 0 100 100"><path d="M38,6 H62 V38 H94 V62 H62 V94 H38 V62 H6 V38 H38 Z" fill="${c}"/></svg>`},
+};
+const COLORS = {
+  rosso:  {label:"Rosso",  hex:"var(--t-red)"},
+  verde:  {label:"Verde",  hex:"var(--t-green)"},
+  giallo: {label:"Giallo", hex:"var(--t-yellow)"},
+  blu:    {label:"Blu",    hex:"var(--t-blue)"},
+  nero:   {label:"Nero",   hex:"var(--t-black)"},
+};
+const DEFAULT_SETTINGS = {
+  useNumbers:true, numbersPool:[0,1,2,3,4,5,6,7,8,9],
+  useSymbols:true, symbolsPool:["square","diamond","circle","triangle","plus"],
+  useColors:true, colorsPool:["rosso","verde","giallo","blu"],
+  targetCount:5,
+  exposureMemory:0.7,
+  intervalReaction:0.5,
+  standbyMin:1.0, standbyMax:7.0,
+  sensitivity:70,
+  refractoryMs:110,
+};
+
+/* ===================== STATE ===================== */
+let settings = loadSettings();
+let currentMode = "memory";
+let audioCtx = null;
+let micStream = null;
+let analyser = null;
+let micSource = null;
+let micRafId = null;
+let micTestActive = false;
+
+/* ===================== STORAGE ===================== */
+function loadSettings(){
+  try{
+    const raw = localStorage.getItem("ddct_settings");
+    if(!raw) return {...DEFAULT_SETTINGS};
+    return {...DEFAULT_SETTINGS, ...JSON.parse(raw)};
+  }catch(e){ return {...DEFAULT_SETTINGS}; }
+}
+function saveSettings(){ localStorage.setItem("ddct_settings", JSON.stringify(settings)); }
+function loadHistory(){
+  try{ return JSON.parse(localStorage.getItem("ddct_history")||"[]"); }catch(e){ return []; }
+}
+function saveHistoryEntry(entry){
+  const h = loadHistory();
+  h.unshift(entry);
+  if(h.length>200) h.length = 200;
+  localStorage.setItem("ddct_history", JSON.stringify(h));
+}
+
+/* ===================== NAV ===================== */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById("screen-"+id).classList.add("active");
+  if(id==="settings") renderSettingsUI();
+  if(id==="history") renderHistory();
+  if(id==="session") resetSessionStage();
+}
+document.querySelectorAll("[data-nav]").forEach(el=>{
+  el.addEventListener("click", ()=>{
+    const target = el.getAttribute("data-nav");
+    if(target==="session" && el.hasAttribute("data-mode")){
+      currentMode = el.getAttribute("data-mode");
+    }
+    if(target==="home"){ stopMicLoop(); }
+    showScreen(target);
+  });
+});
+
+/* ===================== SETTINGS UI ===================== */
+function buildChipGrid(container, pool, allItems, isColor){
+  container.innerHTML = "";
+  Object.keys(allItems).forEach(key=>{
+    const item = allItems[key];
+    const chip = document.createElement("button");
+    chip.className = "chip" + (isColor?" color-chip":" shape-chip") + (pool.includes(isColor?key:key)?" on":"");
+    const active = pool.includes(key);
+    if(active) chip.classList.add("on"); else chip.classList.remove("on");
+    if(isColor){
+      chip.innerHTML = `<span class="dot" style="background:${item.hex}"></span>${item.label}`;
+    } else if(item.svg){
+      chip.innerHTML = item.svg("currentColor") + item.label;
+    } else {
+      chip.textContent = item.label ?? key;
+    }
+    chip.addEventListener("click", ()=>{
+      const idx = pool.indexOf(key);
+      if(idx>-1){ pool.splice(idx,1); } else { pool.push(key); }
+      chip.classList.toggle("on");
+      saveSettings();
+    });
+    container.appendChild(chip);
+  });
+}
+function buildNumberGrid(){
+  const container = document.getElementById("grid-numbers");
+  container.innerHTML = "";
+  for(let n=0;n<=9;n++){
+    const chip = document.createElement("button");
+    chip.className = "chip" + (settings.numbersPool.includes(n)?" on":"");
+    chip.textContent = n;
+    chip.addEventListener("click", ()=>{
+      const idx = settings.numbersPool.indexOf(n);
+      if(idx>-1) settings.numbersPool.splice(idx,1); else settings.numbersPool.push(n);
+      chip.classList.toggle("on");
+      saveSettings();
+    });
+    container.appendChild(chip);
+  }
+}
+function renderSettingsUI(){
+  document.getElementById("s-sens").value = settings.sensitivity;
+  document.getElementById("v-sens").textContent = settings.sensitivity;
+  document.getElementById("s-refr").value = settings.refractoryMs;
+  document.getElementById("v-refr").textContent = settings.refractoryMs+" ms";
+
+  document.getElementById("t-numbers").checked = settings.useNumbers;
+  document.getElementById("t-symbols").checked = settings.useSymbols;
+  document.getElementById("t-colors").checked = settings.useColors;
+  toggleWrap("wrap-numbers", settings.useNumbers);
+  toggleWrap("wrap-symbols", settings.useSymbols);
+  toggleWrap("wrap-colors", settings.useColors);
+
+  buildNumberGrid();
+  buildChipGrid(document.getElementById("grid-symbols"), settings.symbolsPool, SYMBOLS, false);
+  buildChipGrid(document.getElementById("grid-colors"), settings.colorsPool, COLORS, true);
+
+  document.getElementById("s-count").value = settings.targetCount;
+  document.getElementById("v-count").textContent = settings.targetCount;
+  document.getElementById("s-expo").value = settings.exposureMemory;
+  document.getElementById("v-expo").textContent = settings.exposureMemory.toFixed(1)+" s";
+  document.getElementById("s-inter").value = settings.intervalReaction;
+  document.getElementById("v-inter").textContent = settings.intervalReaction.toFixed(1)+" s";
+  document.getElementById("s-standby-min").value = settings.standbyMin;
+  document.getElementById("s-standby-max").value = settings.standbyMax;
+  document.getElementById("v-standby").textContent = settings.standbyMin.toFixed(1)+" – "+settings.standbyMax.toFixed(1)+" s";
+
+  updateMicThresholdMarker();
+}
+function toggleWrap(id, show){ document.getElementById(id).style.display = show? "block":"none"; }
+
+document.getElementById("t-numbers").addEventListener("change", e=>{ settings.useNumbers=e.target.checked; toggleWrap("wrap-numbers", settings.useNumbers); saveSettings(); });
+document.getElementById("t-symbols").addEventListener("change", e=>{ settings.useSymbols=e.target.checked; toggleWrap("wrap-symbols", settings.useSymbols); saveSettings(); });
+document.getElementById("t-colors").addEventListener("change", e=>{ settings.useColors=e.target.checked; toggleWrap("wrap-colors", settings.useColors); saveSettings(); });
+
+document.getElementById("s-sens").addEventListener("input", e=>{
+  settings.sensitivity = parseInt(e.target.value,10);
+  document.getElementById("v-sens").textContent = settings.sensitivity;
+  updateMicThresholdMarker();
+  saveSettings();
+});
+document.getElementById("s-refr").addEventListener("input", e=>{
+  settings.refractoryMs = parseInt(e.target.value,10);
+  document.getElementById("v-refr").textContent = settings.refractoryMs+" ms";
+  saveSettings();
+});
+document.getElementById("s-count").addEventListener("input", e=>{
+  settings.targetCount = parseInt(e.target.value,10);
+  document.getElementById("v-count").textContent = settings.targetCount;
+  saveSettings();
+});
+document.getElementById("s-expo").addEventListener("input", e=>{
+  settings.exposureMemory = parseFloat(e.target.value);
+  document.getElementById("v-expo").textContent = settings.exposureMemory.toFixed(1)+" s";
+  saveSettings();
+});
+document.getElementById("s-inter").addEventListener("input", e=>{
+  settings.intervalReaction = parseFloat(e.target.value);
+  document.getElementById("v-inter").textContent = settings.intervalReaction.toFixed(1)+" s";
+  saveSettings();
+});
+function updateStandbyLabel(){
+  if(settings.standbyMin > settings.standbyMax) settings.standbyMax = settings.standbyMin;
+  document.getElementById("v-standby").textContent = settings.standbyMin.toFixed(1)+" – "+settings.standbyMax.toFixed(1)+" s";
+}
+document.getElementById("s-standby-min").addEventListener("input", e=>{
+  settings.standbyMin = parseFloat(e.target.value); updateStandbyLabel(); saveSettings();
+});
+document.getElementById("s-standby-max").addEventListener("input", e=>{
+  settings.standbyMax = parseFloat(e.target.value); updateStandbyLabel(); saveSettings();
+});
+document.getElementById("btn-reset-settings").addEventListener("click", ()=>{
+  settings = {...DEFAULT_SETTINGS};
+  saveSettings();
+  renderSettingsUI();
+});
+
+/* ===================== MIC / AUDIO ===================== */
+function sensitivityToThreshold(sens){
+  // sens 1..100 -> threshold 0.92 .. 0.04 (amplitude 0..1)
+  return 0.92 - (sens/100)*0.88;
+}
+function updateMicThresholdMarker(){
+  const th = sensitivityToThreshold(settings.sensitivity);
+  const pct = (1-th)*100;
+  document.getElementById("mic-meter-threshold").style.left = pct+"%";
+}
+async function ensureAudioCtx(){
+  if(!audioCtx){ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+  if(audioCtx.state === "suspended"){ await audioCtx.resume(); }
+  return audioCtx;
+}
+async function ensureMic(){
+  if(micStream) return true;
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({audio:{
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false
+    }});
+    await ensureAudioCtx();
+    micSource = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    micSource.connect(analyser);
+    return true;
+  }catch(err){
+    console.error(err);
+    return false;
+  }
+}
+function playBeep(freq=1100, dur=0.14, delay=0){
+  ensureAudioCtx().then(ctx=>{
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime+delay);
+    gain.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime+delay+0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+delay+dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(ctx.currentTime+delay);
+    osc.stop(ctx.currentTime+delay+dur+0.02);
+  });
+}
+
+/* mic test in settings */
+const buf = new Float32Array(1024);
+function micTestLoop(){
+  if(!micTestActive || !analyser) return;
+  analyser.getFloatTimeDomainData(buf);
+  let peak = 0;
+  for(let i=0;i<buf.length;i++){ const a = Math.abs(buf[i]); if(a>peak) peak=a; }
+  const pct = Math.min(100, peak*100/1);
+  document.getElementById("mic-meter-fill").style.width = pct+"%";
+  const th = sensitivityToThreshold(settings.sensitivity);
+  const statusEl = document.getElementById("mic-status");
+  if(peak > th){
+    statusEl.textContent = "COLPO RILEVATO";
+    statusEl.className = "mic-status shot";
+  } else {
+    statusEl.textContent = "In ascolto…";
+    statusEl.className = "mic-status live";
+  }
+  micRafId = requestAnimationFrame(micTestLoop);
+}
+document.getElementById("btn-mic-test").addEventListener("click", async ()=>{
+  const btn = document.getElementById("btn-mic-test");
+  if(micTestActive){
+    micTestActive = false;
+    if(micRafId) cancelAnimationFrame(micRafId);
+    btn.textContent = "Avvia test microfono";
+    document.getElementById("mic-status").textContent = "Microfono non attivo.";
+    document.getElementById("mic-status").className = "mic-status";
+    document.getElementById("mic-meter-fill").style.width = "0%";
+    return;
+  }
+  document.getElementById("mic-status").textContent = "Richiesta permesso microfono…";
+  const ok = await ensureMic();
+  if(!ok){
+    document.getElementById("mic-status").textContent = "Permesso negato o microfono non disponibile.";
+    document.getElementById("mic-status").className = "mic-status shot";
+    return;
+  }
+  micTestActive = true;
+  btn.textContent = "Ferma test microfono";
+  micTestLoop();
+});
+document.getElementById("btn-sim-shot-settings").addEventListener("click", ()=>{
+  document.getElementById("mic-meter-fill").style.width = "100%";
+  const statusEl = document.getElementById("mic-status");
+  statusEl.textContent = "COLPO RILEVATO (simulato)";
+  statusEl.className = "mic-status shot";
+  setTimeout(()=>{
+    document.getElementById("mic-meter-fill").style.width = micTestActive? "0%" : "0%";
+    if(micTestActive){ statusEl.textContent = "In ascolto…"; statusEl.className = "mic-status live"; }
+    else { statusEl.textContent = "Microfono non attivo."; statusEl.className = "mic-status"; }
+  }, 350);
+});
+function stopMicLoop(){
+  micTestActive = false;
+  if(micRafId) cancelAnimationFrame(micRafId);
+}
+
+/* ===================== SEQUENCE GENERATION ===================== */
+function buildPool(){
+  const pool = [];
+  if(settings.useNumbers){
+    settings.numbersPool.forEach(n=> pool.push({type:"number", value:n}));
+  }
+  if(settings.useSymbols){
+    settings.symbolsPool.forEach(s=> pool.push({type:"symbol", value:s}));
+  }
+  return pool;
+}
+function pickColor(){
+  if(!settings.useColors) return "nero";
+  const pool = settings.colorsPool.length? settings.colorsPool : ["nero"];
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+function generateSequence(){
+  const pool = buildPool();
+  if(pool.length===0) return [];
+  const seq = [];
+  let lastKey = null;
+  for(let i=0;i<settings.targetCount;i++){
+    let candidate, key, tries=0;
+    do{
+      const base = pool[Math.floor(Math.random()*pool.length)];
+      const color = pickColor();
+      candidate = {type:base.type, value:base.value, color};
+      key = base.type+":"+base.value+":"+color;
+      tries++;
+    }while(key===lastKey && pool.length>1 && tries<8);
+    lastKey = key;
+    seq.push(candidate);
+  }
+  return seq;
+}
+function colorHex(colorKey){ return COLORS[colorKey] ? COLORS[colorKey].hex : "var(--t-black)"; }
+function targetFigureHTML(target){
+  const hex = colorHex(target.color);
+  if(target.type==="number"){
+    return `<div class="target-number" style="color:${hex}">${target.value}</div>`;
+  } else {
+    return `<div class="target-symbol">${SYMBOLS[target.value].svg(hex)}</div>`;
+  }
+}
+function chipFigureHTML(target){
+  const hex = colorHex(target.color);
+  if(target.type==="number"){
+    return `<span class="num" style="color:${hex}">${target.value}</span>`;
+  } else {
+    return SYMBOLS[target.value].svg(hex);
+  }
+}
+
+/* ===================== SESSION FLOW ===================== */
+let sessionSeq = [];
+let shots = [];
+let sessionStartTime = null;
+let sessionActive = false;
+let wakeLock = null;
+
+function resetSessionStage(){
+  document.getElementById("session-mode-pill").textContent = currentMode.toUpperCase();
+  document.getElementById("stage-msg").textContent = "Pronto?";
+  document.getElementById("stage-sub").textContent = "Tocca per iniziare il round. Verrà chiesto l'accesso al microfono.";
+  document.getElementById("btn-ready").style.display = "flex";
+  document.getElementById("session-stage").style.display = "flex";
+  document.getElementById("count-hud").style.display = "none";
+  document.getElementById("target-plate").classList.remove("show");
+  document.getElementById("timer-hud").classList.remove("show");
+}
+async function requestWakeLock(){
+  try{ if("wakeLock" in navigator){ wakeLock = await navigator.wakeLock.request("screen"); } }catch(e){}
+}
+function releaseWakeLock(){ if(wakeLock){ wakeLock.release().catch(()=>{}); wakeLock=null; } }
+
+document.getElementById("btn-ready").addEventListener("click", startRound);
+
+async function startRound(){
+  const pool = buildPool();
+  if(pool.length===0){
+    document.getElementById("stage-sub").textContent = "Attiva almeno numeri o simboli nelle impostazioni prima di iniziare.";
+    return;
+  }
+  document.getElementById("btn-ready").style.display = "none";
+  document.getElementById("stage-sub").textContent = "";
+  document.getElementById("stage-msg").textContent = "Preparazione…";
+
+  document.getElementById("stage-msg").textContent = "Attivazione microfono…";
+  const micOk = await ensureMic();
+  if(!micOk){
+    document.getElementById("stage-msg").textContent = "Microfono non disponibile";
+    document.getElementById("stage-sub").textContent = "Controlla i permessi del browser e riprova.";
+    document.getElementById("btn-ready").style.display = "flex";
+    document.getElementById("btn-ready").textContent = "RIPROVA";
+    return;
+  }
+  await requestWakeLock();
+
+  sessionSeq = generateSequence();
+  shots = [];
+
+  if(currentMode==="memory"){
+    await runMemorySequence();
+  } else {
+    await runReactionSequence();
+  }
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function runMemorySequence(){
+  document.getElementById("stage-msg").textContent = "";
+  await sleep(500);
+  const hud = document.getElementById("count-hud");
+  hud.style.display = "flex";
+  document.getElementById("hud-round").textContent = "MEMORY";
+  const plate = document.getElementById("target-plate");
+  const fig = document.getElementById("target-figure");
+
+  for(let i=0;i<sessionSeq.length;i++){
+    document.getElementById("hud-progress").textContent = (i+1)+" / "+sessionSeq.length;
+    fig.innerHTML = targetFigureHTML(sessionSeq[i]);
+    plate.classList.add("show");
+    await sleep(settings.exposureMemory*1000);
+    plate.classList.remove("show");
+    await sleep(60);
+  }
+  hud.style.display = "none";
+  await standbyThenBeepAndStart();
+}
+
+async function runReactionSequence(){
+  document.getElementById("stage-msg").textContent = "";
+  await standbyPhase();
+  playBeep(1100, 0.14);
+  await sleep(250);
+
+  const hud = document.getElementById("count-hud");
+  hud.style.display = "flex";
+  document.getElementById("hud-round").textContent = "REACTION";
+  const plate = document.getElementById("target-plate");
+  const fig = document.getElementById("target-figure");
+
+  for(let i=0;i<sessionSeq.length;i++){
+    document.getElementById("hud-progress").textContent = (i+1)+" / "+sessionSeq.length;
+    fig.innerHTML = targetFigureHTML(sessionSeq[i]);
+    plate.classList.add("show");
+    await sleep(settings.intervalReaction*1000);
+    if(i < sessionSeq.length-1){ plate.classList.remove("show"); await sleep(40); }
+  }
+  hud.style.display = "none";
+  plate.classList.remove("show");
+  playBeep(1100, 0.14);
+  beginTimer();
+}
+
+function standbyPhase(){
+  return new Promise(resolve=>{
+    document.getElementById("stage-msg").innerHTML = '<div class="standby-dot" style="margin:0 auto 18px;"></div>Standby…';
+    document.getElementById("session-stage").style.display = "flex";
+    const min = settings.standbyMin, max = Math.max(settings.standbyMax, min);
+    const wait = (min + Math.random()*(max-min))*1000;
+    setTimeout(resolve, wait);
+  });
+}
+async function standbyThenBeepAndStart(){
+  document.getElementById("session-stage").style.display = "flex";
+  await standbyPhase();
+  playBeep(1300, 0.16);
+  beginTimer();
+}
+
+/* ---- timer + shot detection ---- */
+const timBuf = new Float32Array(1024);
+let timerRafId = null;
+let lastShotAt = -Infinity;
+
+function beginTimer(){
+  document.getElementById("session-stage").style.display = "none";
+  const th = document.getElementById("timer-hud");
+  th.classList.add("show");
+  document.getElementById("timer-mode-label").textContent = currentMode.toUpperCase();
+  document.getElementById("timer-elements-label").textContent = sessionSeq.length+" target";
+  document.getElementById("shot-count").textContent = "0 COLPI";
+  document.getElementById("last-splits").innerHTML = "";
+  document.getElementById("timer-clock").innerHTML = "0.00<span class=\"ms\"></span>";
+
+  sessionStartTime = performance.now();
+  lastShotAt = -Infinity;
+  sessionActive = true;
+  tickClock();
+  micDetectLoop();
+}
+function tickClock(){
+  if(!sessionActive) return;
+  const t = (performance.now()-sessionStartTime)/1000;
+  document.getElementById("timer-clock").innerHTML = t.toFixed(2);
+  requestAnimationFrame(tickClock);
+}
+function micDetectLoop(){
+  if(!sessionActive || !analyser) return;
+  analyser.getFloatTimeDomainData(timBuf);
+  let peak = 0;
+  for(let i=0;i<timBuf.length;i++){ const a = Math.abs(timBuf[i]); if(a>peak) peak=a; }
+  const th = sensitivityToThreshold(settings.sensitivity);
+  const now = performance.now();
+  if(peak > th && (now-lastShotAt) > settings.refractoryMs){
+    lastShotAt = now;
+    registerShot(now);
+  }
+  timerRafId = requestAnimationFrame(micDetectLoop);
+}
+function registerShot(now){
+  const t = (now - sessionStartTime)/1000;
+  shots.push(t);
+  document.getElementById("shot-count").textContent = shots.length+" COLPI";
+  const splitsEl = document.getElementById("last-splits");
+  const split = shots.length>1 ? (shots[shots.length-1]-shots[shots.length-2]) : shots[0];
+  const chip = document.createElement("div");
+  chip.className = "sp";
+  chip.textContent = "#"+shots.length+" "+split.toFixed(2)+"s";
+  splitsEl.appendChild(chip);
+  splitsEl.scrollLeft = splitsEl.scrollWidth;
+  if(navigator.vibrate) navigator.vibrate(15);
+}
+document.getElementById("btn-sim-shot").addEventListener("click", ()=>{
+  if(!sessionActive) return;
+  const now = performance.now();
+  if((now-lastShotAt) <= settings.refractoryMs) return; // rispetta la finestra minima come un colpo vero
+  lastShotAt = now;
+  registerShot(now);
+});
+document.getElementById("btn-stop").addEventListener("click", endRound);
+
+function endRound(){
+  if(!sessionActive) return;
+  sessionActive = false;
+  if(timerRafId) cancelAnimationFrame(timerRafId);
+  document.getElementById("timer-hud").classList.remove("show");
+  releaseWakeLock();
+  showResults();
+}
+function showResults(){
+  const total = shots.length? shots[shots.length-1] : 0;
+  document.getElementById("results-title").textContent = currentMode==="memory" ? "Risultato — Memory" : "Risultato — Reaction";
+  document.getElementById("result-total").textContent = total.toFixed(2)+"s";
+
+  const recap = document.getElementById("seq-recap");
+  recap.innerHTML = "";
+  sessionSeq.forEach((t,i)=>{
+    const el = document.createElement("div");
+    el.className = "seq-chip";
+    el.innerHTML = `<span class="idx">${i+1}</span>${chipFigureHTML(t)}`;
+    recap.appendChild(el);
+  });
+
+  const tbody = document.getElementById("shots-tbody");
+  tbody.innerHTML = "";
+  shots.forEach((s,i)=>{
+    const split = i===0? s : (s-shots[i-1]);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>#${i+1}</td><td class="time">${s.toFixed(2)}s</td><td class="split">+${split.toFixed(2)}s</td>`;
+    tbody.appendChild(tr);
+  });
+
+  saveHistoryEntry({
+    mode:currentMode,
+    date:new Date().toISOString(),
+    total,
+    shots:shots.slice(),
+    sequence:sessionSeq.map(t=>({type:t.type, value:t.value, color:t.color})),
+  });
+
+  showScreen("results");
+}
+document.getElementById("btn-again").addEventListener("click", ()=>{ showScreen("session"); startRound(); });
+
+/* ===================== HISTORY UI ===================== */
+function fmtDate(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"}) + " " + d.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
+}
+function renderHistory(){
+  const h = loadHistory();
+  const el = document.getElementById("history-content");
+  if(h.length===0){
+    el.innerHTML = `<div class="empty-state"><div class="ic">◎</div><p>Nessuna sessione registrata. Completa un round per vederlo qui.</p></div>`;
+    return;
+  }
+  el.innerHTML = "";
+  h.forEach(entry=>{
+    const div = document.createElement("div");
+    div.className = "hist-item";
+    div.innerHTML = `
+      <div class="hrow"><span class="hmode">${entry.mode}</span><span class="hdate">${fmtDate(entry.date)}</span></div>
+      <div class="htotal">${entry.total.toFixed(2)}s</div>
+      <div class="hsub">${entry.shots.length} colpi · ${entry.sequence.length} target</div>
+    `;
+    el.appendChild(div);
+  });
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "btn btn-danger";
+  clearBtn.style.marginTop = "10px";
+  clearBtn.textContent = "Cancella storico";
+  clearBtn.addEventListener("click", ()=>{
+    if(confirm("Cancellare tutto lo storico sessioni?")){
+      localStorage.removeItem("ddct_history");
+      renderHistory();
+    }
+  });
+  el.appendChild(clearBtn);
+}
+
+/* ===================== INIT ===================== */
+renderSettingsUI();
+})();
+</script>
+</body>
+</html>
