@@ -242,7 +242,14 @@ table.shots td.split{color:var(--accent);}
 /* ---------- history ---------- */
 .hist-item{
   background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px;
+  position:relative;
 }
+.hist-del{
+  position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:8px;
+  background:var(--panel-2); border:1px solid var(--border); color:var(--text-faint);
+  display:flex; align-items:center; justify-content:center; font-size:15px;
+}
+.hist-del:active{background:var(--danger-dim); border-color:var(--danger); color:var(--danger);}
 .hist-item .hrow{display:flex; justify-content:space-between; align-items:baseline;}
 .hist-item .hmode{font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); font-weight:700;}
 .hist-item .hdate{font-size:11px; color:var(--text-faint); font-family:var(--font-mono);}
@@ -311,6 +318,11 @@ table.shots td.split{color:var(--accent);}
         <div class="field-label"><span>Finestra minima tra colpi</span><span class="val" id="v-refr">110 ms</span></div>
         <div class="field-desc">Tempo minimo dopo un colpo prima di poterne rilevare un altro (evita doppi conteggi da eco/riverbero).</div>
         <input type="range" id="s-refr" min="60" max="300" step="5" value="110">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Durata beep</span><span class="val" id="v-beepdur">170 ms</span></div>
+        <div class="field-desc">Lunghezza del tono di via/beep. Se lo allunghi molto, valuta di alzare anche il blocco rilevamento qui sotto.</div>
+        <input type="range" id="s-beepdur" min="80" max="500" step="10" value="170">
       </div>
       <div class="field">
         <div class="field-label"><span>Blocco rilevamento dopo il beep</span><span class="val" id="v-lockout">220 ms</span></div>
@@ -476,6 +488,7 @@ const DEFAULT_SETTINGS = {
   sensitivity:70,
   refractoryMs:110,
   beepLockoutMs:220,
+  beepDurMs:170,
 };
 
 /* ===================== STATE ===================== */
@@ -498,12 +511,24 @@ function loadSettings(){
 }
 function saveSettings(){ localStorage.setItem("ddct_settings", JSON.stringify(settings)); }
 function loadHistory(){
-  try{ return JSON.parse(localStorage.getItem("ddct_history")||"[]"); }catch(e){ return []; }
+  try{
+    const h = JSON.parse(localStorage.getItem("ddct_history")||"[]");
+    let migrated = false;
+    h.forEach(e=>{
+      if(!e.id){ e.id = Date.now()+"-"+Math.random().toString(36).slice(2); migrated = true; }
+    });
+    if(migrated) localStorage.setItem("ddct_history", JSON.stringify(h));
+    return h;
+  }catch(e){ return []; }
 }
 function saveHistoryEntry(entry){
   const h = loadHistory();
   h.unshift(entry);
   if(h.length>200) h.length = 200;
+  localStorage.setItem("ddct_history", JSON.stringify(h));
+}
+function deleteHistoryEntry(id){
+  const h = loadHistory().filter(e=> e.id !== id);
   localStorage.setItem("ddct_history", JSON.stringify(h));
 }
 
@@ -572,6 +597,8 @@ function renderSettingsUI(){
   document.getElementById("v-sens").textContent = settings.sensitivity;
   document.getElementById("s-refr").value = settings.refractoryMs;
   document.getElementById("v-refr").textContent = settings.refractoryMs+" ms";
+  document.getElementById("s-beepdur").value = settings.beepDurMs;
+  document.getElementById("v-beepdur").textContent = settings.beepDurMs+" ms";
   document.getElementById("s-lockout").value = settings.beepLockoutMs;
   document.getElementById("v-lockout").textContent = settings.beepLockoutMs+" ms";
 
@@ -613,6 +640,11 @@ document.getElementById("s-sens").addEventListener("input", e=>{
 document.getElementById("s-refr").addEventListener("input", e=>{
   settings.refractoryMs = parseInt(e.target.value,10);
   document.getElementById("v-refr").textContent = settings.refractoryMs+" ms";
+  saveSettings();
+});
+document.getElementById("s-beepdur").addEventListener("input", e=>{
+  settings.beepDurMs = parseInt(e.target.value,10);
+  document.getElementById("v-beepdur").textContent = settings.beepDurMs+" ms";
   saveSettings();
 });
 document.getElementById("s-lockout").addEventListener("input", e=>{
@@ -683,7 +715,8 @@ async function ensureMic(){
     return false;
   }
 }
-function playBeep(freq=1650, dur=0.17, delay=0){
+function playBeep(freq=1650, dur=null, delay=0){
+  if(dur===null) dur = settings.beepDurMs/1000;
   ensureAudioCtx().then(ctx=>{
     const t0 = ctx.currentTime+delay;
     const gain = ctx.createGain();
@@ -898,7 +931,7 @@ async function runReactionSequence(){
   document.getElementById("stage-msg").textContent = "";
   await standbyPhase();
   playBeep();
-  await sleep(280);
+  await sleep(settings.beepDurMs + 110);
 
   const hud = document.getElementById("count-hud");
   hud.style.display = "flex";
@@ -1031,6 +1064,7 @@ function showResults(){
   });
 
   saveHistoryEntry({
+    id: (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+"-"+Math.random().toString(36).slice(2))),
     mode:currentMode,
     date:new Date().toISOString(),
     total,
@@ -1059,10 +1093,15 @@ function renderHistory(){
     const div = document.createElement("div");
     div.className = "hist-item";
     div.innerHTML = `
+      <button class="hist-del" data-id="${entry.id||""}" title="Elimina questa sessione">✕</button>
       <div class="hrow"><span class="hmode">${entry.mode}</span><span class="hdate">${fmtDate(entry.date)}</span></div>
       <div class="htotal">${entry.total.toFixed(2)}s</div>
       <div class="hsub">${entry.shots.length} colpi · ${entry.sequence.length} target</div>
     `;
+    div.querySelector(".hist-del").addEventListener("click", ()=>{
+      deleteHistoryEntry(entry.id);
+      renderHistory();
+    });
     el.appendChild(div);
   });
   const clearBtn = document.createElement("button");
