@@ -6,7 +6,7 @@
 <title>DDCT — Addestratore Tiro Dinamico Cognitivo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#0A0A0C;
@@ -30,6 +30,7 @@
   --t-black:#111213;
   --radius:14px;
   --font-display:'Archivo Black', sans-serif;
+  --font-target:'Bebas Neue', 'Archivo Black', sans-serif;
   --font-body:'Inter', sans-serif;
   --font-mono:'JetBrains Mono', monospace;
 }
@@ -174,7 +175,7 @@ input[type=range]::-moz-range-thumb{
 }
 .target-plate.show{display:flex;}
 .target-figure{display:flex; flex-direction:column; align-items:center; justify-content:center;}
-.target-number{font-family:var(--font-display); font-size:min(58vw,420px); line-height:1; color:var(--fig-color, var(--t-black));}
+.target-number{font-family:var(--font-target); font-weight:400; font-size:min(66vw,480px); line-height:1; color:var(--fig-color, var(--t-black));}
 .target-symbol svg{width:min(58vw,420px); height:min(58vw,420px); display:block;}
 
 .count-hud{
@@ -223,7 +224,7 @@ input[type=range]::-moz-range-thumb{
   display:flex; align-items:center; justify-content:center; position:relative;
 }
 .seq-chip .idx{position:absolute; top:-6px; left:-6px; background:var(--panel-2); color:var(--text-dim); font-family:var(--font-mono); font-size:9px; border-radius:6px; padding:1px 4px; border:1px solid var(--border);}
-.seq-chip .num{font-family:var(--font-display); font-size:22px;}
+.seq-chip .num{font-family:var(--font-target); font-weight:400; font-size:28px;}
 .seq-chip svg{width:26px; height:26px;}
 
 table.shots{width:100%; border-collapse:collapse; margin-top:10px;}
@@ -310,6 +311,11 @@ table.shots td.split{color:var(--accent);}
         <div class="field-label"><span>Finestra minima tra colpi</span><span class="val" id="v-refr">110 ms</span></div>
         <div class="field-desc">Tempo minimo dopo un colpo prima di poterne rilevare un altro (evita doppi conteggi da eco/riverbero).</div>
         <input type="range" id="s-refr" min="60" max="300" step="5" value="110">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Blocco rilevamento dopo il beep</span><span class="val" id="v-lockout">220 ms</span></div>
+        <div class="field-desc">Ignora il microfono per questo tempo subito dopo il beep di via, per non scambiare il beep stesso (rientro da altoparlante) per un colpo. Se un tiratore molto veloce rischia di partire prima che finisca, abbassalo — ma se noti un "colpo fantasma" a tempo 0 sui tiratori più lenti, alzalo.</div>
+        <input type="range" id="s-lockout" min="80" max="400" step="10" value="220">
       </div>
     </div>
 
@@ -469,6 +475,7 @@ const DEFAULT_SETTINGS = {
   standbyMin:1.0, standbyMax:7.0,
   sensitivity:70,
   refractoryMs:110,
+  beepLockoutMs:220,
 };
 
 /* ===================== STATE ===================== */
@@ -565,6 +572,8 @@ function renderSettingsUI(){
   document.getElementById("v-sens").textContent = settings.sensitivity;
   document.getElementById("s-refr").value = settings.refractoryMs;
   document.getElementById("v-refr").textContent = settings.refractoryMs+" ms";
+  document.getElementById("s-lockout").value = settings.beepLockoutMs;
+  document.getElementById("v-lockout").textContent = settings.beepLockoutMs+" ms";
 
   document.getElementById("t-numbers").checked = settings.useNumbers;
   document.getElementById("t-symbols").checked = settings.useSymbols;
@@ -604,6 +613,11 @@ document.getElementById("s-sens").addEventListener("input", e=>{
 document.getElementById("s-refr").addEventListener("input", e=>{
   settings.refractoryMs = parseInt(e.target.value,10);
   document.getElementById("v-refr").textContent = settings.refractoryMs+" ms";
+  saveSettings();
+});
+document.getElementById("s-lockout").addEventListener("input", e=>{
+  settings.beepLockoutMs = parseInt(e.target.value,10);
+  document.getElementById("v-lockout").textContent = settings.beepLockoutMs+" ms";
   saveSettings();
 });
 document.getElementById("s-count").addEventListener("input", e=>{
@@ -669,18 +683,25 @@ async function ensureMic(){
     return false;
   }
 }
-function playBeep(freq=1100, dur=0.14, delay=0){
+function playBeep(freq=1650, dur=0.17, delay=0){
   ensureAudioCtx().then(ctx=>{
-    const osc = ctx.createOscillator();
+    const t0 = ctx.currentTime+delay;
     const gain = ctx.createGain();
-    osc.type = "square";
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime+delay);
-    gain.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime+delay+0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+delay+dur);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(ctx.currentTime+delay);
-    osc.stop(ctx.currentTime+delay+dur+0.02);
+    gain.connect(ctx.destination);
+    // two stacked oscillators (fundamental + slight detune) for a fuller, more piercing tone like a real shot-timer beep
+    [0, 6].forEach(detune=>{
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      osc.detune.value = detune;
+      osc.connect(gain);
+      osc.start(t0);
+      osc.stop(t0+dur+0.03);
+    });
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.95, t0+0.004);
+    gain.gain.setValueAtTime(0.95, t0+dur*0.7);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
   });
 }
 
@@ -876,8 +897,8 @@ async function runMemorySequence(){
 async function runReactionSequence(){
   document.getElementById("stage-msg").textContent = "";
   await standbyPhase();
-  playBeep(1100, 0.14);
-  await sleep(250);
+  playBeep();
+  await sleep(280);
 
   const hud = document.getElementById("count-hud");
   hud.style.display = "flex";
@@ -894,7 +915,7 @@ async function runReactionSequence(){
   }
   hud.style.display = "none";
   plate.classList.remove("show");
-  playBeep(1100, 0.14);
+  playBeep();
   beginTimer();
 }
 
@@ -910,7 +931,7 @@ function standbyPhase(){
 async function standbyThenBeepAndStart(){
   document.getElementById("session-stage").style.display = "flex";
   await standbyPhase();
-  playBeep(1300, 0.16);
+  playBeep();
   beginTimer();
 }
 
@@ -918,6 +939,7 @@ async function standbyThenBeepAndStart(){
 const timBuf = new Float32Array(1024);
 let timerRafId = null;
 let lastShotAt = -Infinity;
+let listenFromTime = -Infinity;
 
 function beginTimer(){
   document.getElementById("session-stage").style.display = "none";
@@ -931,6 +953,7 @@ function beginTimer(){
 
   sessionStartTime = performance.now();
   lastShotAt = -Infinity;
+  listenFromTime = sessionStartTime + settings.beepLockoutMs; // ignora il rientro del beep stesso nel microfono
   sessionActive = true;
   tickClock();
   micDetectLoop();
@@ -948,7 +971,7 @@ function micDetectLoop(){
   for(let i=0;i<timBuf.length;i++){ const a = Math.abs(timBuf[i]); if(a>peak) peak=a; }
   const th = sensitivityToThreshold(settings.sensitivity);
   const now = performance.now();
-  if(peak > th && (now-lastShotAt) > settings.refractoryMs){
+  if(now >= listenFromTime && peak > th && (now-lastShotAt) > settings.refractoryMs){
     lastShotAt = now;
     registerShot(now);
   }
