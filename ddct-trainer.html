@@ -255,6 +255,11 @@ table.shots td.split{color:var(--accent);}
 .hist-item .hdate{font-size:11px; color:var(--text-faint); font-family:var(--font-mono);}
 .hist-item .htotal{font-family:var(--font-mono); font-size:22px; font-weight:700; margin-top:6px;}
 .hist-item .hsub{font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+.app-version{
+  position:fixed; bottom:calc(8px + env(safe-area-inset-bottom)); right:12px;
+  font-family:var(--font-mono); font-size:10px; color:var(--text-faint); opacity:.55;
+  z-index:2; pointer-events:none; letter-spacing:0.03em;
+}
 .empty-state{text-align:center; padding:60px 20px; color:var(--text-faint);}
 .empty-state .ic{font-size:32px; margin-bottom:10px;}
 .empty-state p{font-size:13.5px; line-height:1.5; max-width:28ch; margin:6px auto 0;}
@@ -323,6 +328,15 @@ table.shots td.split{color:var(--accent);}
         <div class="field-label"><span>Durata beep</span><span class="val" id="v-beepdur">170 ms</span></div>
         <div class="field-desc">Lunghezza del tono di via/beep. Se lo allunghi molto, valuta di alzare anche il blocco rilevamento qui sotto.</div>
         <input type="range" id="s-beepdur" min="80" max="500" step="10" value="170">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Tono beep</span><span class="val" id="v-beepfreq">1650 Hz</span></div>
+        <div class="field-desc">Frequenza del tono alto. Il beep resta bitonale: il tono basso si adegua automaticamente 350 Hz sotto.</div>
+        <input type="range" id="s-beepfreq" min="800" max="2500" step="10" value="1650">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Volume beep</span><span class="val" id="v-beepvol">100%</span></div>
+        <input type="range" id="s-beepvol" min="10" max="100" step="5" value="100">
       </div>
       <div class="field">
         <div class="field-label"><span>Blocco rilevamento dopo il beep</span><span class="val" id="v-lockout">220 ms</span></div>
@@ -458,9 +472,14 @@ table.shots td.split{color:var(--accent);}
   <div class="content" id="history-content"></div>
 </section>
 
+<div class="app-version" id="app-version"></div>
+
 <script>
 (function(){
 "use strict";
+
+const APP_VERSION = "1.5.0";
+document.getElementById("app-version").textContent = "v"+APP_VERSION;
 
 /* ===================== CONSTANTS ===================== */
 const SYMBOLS = {
@@ -489,7 +508,10 @@ const DEFAULT_SETTINGS = {
   refractoryMs:110,
   beepLockoutMs:220,
   beepDurMs:170,
+  beepFreq:1650,
+  beepVolume:1.0,
 };
+const BEEP_TONE_DELTA_HZ = 350; // il tono basso è sempre questo tanto sotto il tono alto impostato
 
 /* ===================== STATE ===================== */
 let settings = loadSettings();
@@ -599,6 +621,10 @@ function renderSettingsUI(){
   document.getElementById("v-refr").textContent = settings.refractoryMs+" ms";
   document.getElementById("s-beepdur").value = settings.beepDurMs;
   document.getElementById("v-beepdur").textContent = settings.beepDurMs+" ms";
+  document.getElementById("s-beepfreq").value = settings.beepFreq;
+  document.getElementById("v-beepfreq").textContent = settings.beepFreq+" Hz";
+  document.getElementById("s-beepvol").value = Math.round(settings.beepVolume*100);
+  document.getElementById("v-beepvol").textContent = Math.round(settings.beepVolume*100)+"%";
   document.getElementById("s-lockout").value = settings.beepLockoutMs;
   document.getElementById("v-lockout").textContent = settings.beepLockoutMs+" ms";
 
@@ -645,6 +671,16 @@ document.getElementById("s-refr").addEventListener("input", e=>{
 document.getElementById("s-beepdur").addEventListener("input", e=>{
   settings.beepDurMs = parseInt(e.target.value,10);
   document.getElementById("v-beepdur").textContent = settings.beepDurMs+" ms";
+  saveSettings();
+});
+document.getElementById("s-beepfreq").addEventListener("input", e=>{
+  settings.beepFreq = parseInt(e.target.value,10);
+  document.getElementById("v-beepfreq").textContent = settings.beepFreq+" Hz";
+  saveSettings();
+});
+document.getElementById("s-beepvol").addEventListener("input", e=>{
+  settings.beepVolume = parseInt(e.target.value,10)/100;
+  document.getElementById("v-beepvol").textContent = Math.round(settings.beepVolume*100)+"%";
   saveSettings();
 });
 document.getElementById("s-lockout").addEventListener("input", e=>{
@@ -715,25 +751,27 @@ async function ensureMic(){
     return false;
   }
 }
-function playBeep(freq=1650, dur=null, delay=0){
+function playBeep(freqHigh=null, dur=null, delay=0){
+  if(freqHigh===null) freqHigh = settings.beepFreq;
   if(dur===null) dur = settings.beepDurMs/1000;
+  const freqLow = Math.max(150, freqHigh - BEEP_TONE_DELTA_HZ);
+  const peakGain = Math.max(0.02, settings.beepVolume) * 0.95;
   ensureAudioCtx().then(ctx=>{
     const t0 = ctx.currentTime+delay;
     const gain = ctx.createGain();
     gain.connect(ctx.destination);
-    // two stacked oscillators (fundamental + slight detune) for a fuller, more piercing tone like a real shot-timer beep
-    [0, 6].forEach(detune=>{
+    // due toni distinti (alto + basso a delta fisso), suonati insieme, per un beep bitonale tipo cronometro da tiro
+    [freqHigh, freqLow].forEach(f=>{
       const osc = ctx.createOscillator();
       osc.type = "square";
-      osc.frequency.value = freq;
-      osc.detune.value = detune;
+      osc.frequency.value = f;
       osc.connect(gain);
       osc.start(t0);
       osc.stop(t0+dur+0.03);
     });
     gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(0.95, t0+0.004);
-    gain.gain.setValueAtTime(0.95, t0+dur*0.7);
+    gain.gain.exponentialRampToValueAtTime(peakGain, t0+0.004);
+    gain.gain.setValueAtTime(peakGain, t0+dur*0.7);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
   });
 }
