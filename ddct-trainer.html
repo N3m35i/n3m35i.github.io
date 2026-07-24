@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
 :root{
+  color-scheme: dark;
   --bg:#0A0A0C;
   --panel:#17181C;
   --panel-2:#1F2126;
@@ -240,14 +241,27 @@ table.shots td.split{color:var(--accent);}
 .result-actions{display:flex; gap:10px; margin-top:20px;}
 
 /* ---------- history ---------- */
+.hist-filter{
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:14px; margin-bottom:16px;
+}
+.hist-filter-row{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
+.hist-filter-row input[type=date]{
+  flex:1; min-width:0; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+  padding:9px 10px; border-radius:9px; font-family:var(--font-mono); font-size:12.5px;
+}
+.hist-filter-sep{color:var(--text-faint); font-size:12px; flex-shrink:0;}
+
 .hist-item{
-  background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px;
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:14px 52px 14px 16px; margin-bottom:10px;
   position:relative;
 }
+.hist-item:active{background:var(--panel-2);}
 .hist-del{
   position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:8px;
   background:var(--panel-2); border:1px solid var(--border); color:var(--text-faint);
-  display:flex; align-items:center; justify-content:center; font-size:15px;
+  display:flex; align-items:center; justify-content:center; font-size:15px; z-index:2;
 }
 .hist-del:active{background:var(--danger-dim); border-color:var(--danger); color:var(--danger);}
 .hist-item .hrow{display:flex; justify-content:space-between; align-items:baseline;}
@@ -439,8 +453,8 @@ table.shots td.split{color:var(--accent);}
 <!-- ============ RESULTS ============ -->
 <section class="screen" id="screen-results">
   <div class="topbar">
-    <div><span class="eyebrow">Round completato</span><h1 id="results-title">Risultato</h1></div>
-    <button class="icon-btn" data-nav="home">✕</button>
+    <div><span class="eyebrow" id="results-eyebrow">Round completato</span><h1 id="results-title">Risultato</h1></div>
+    <button class="icon-btn" data-nav="home" id="btn-results-close">✕</button>
   </div>
   <div class="content">
     <div class="result-hero">
@@ -458,7 +472,8 @@ table.shots td.split{color:var(--accent);}
 
     <div class="result-actions">
       <button class="btn btn-primary" id="btn-again">Nuovo round</button>
-      <button class="btn btn-ghost" data-nav="home">Home</button>
+      <button class="btn btn-danger" id="btn-delete-from-detail" style="display:none;">Elimina sessione</button>
+      <button class="btn btn-ghost" data-nav="home" id="btn-results-home">Home</button>
     </div>
   </div>
 </section>
@@ -469,7 +484,17 @@ table.shots td.split{color:var(--accent);}
     <div><span class="eyebrow">Registro</span><h1>Storico sessioni</h1></div>
     <button class="icon-btn" data-nav="home">✕</button>
   </div>
-  <div class="content" id="history-content"></div>
+  <div class="content">
+    <div class="hist-filter">
+      <div class="hist-filter-row">
+        <input type="date" id="hist-from" aria-label="Dal">
+        <span class="hist-filter-sep">–</span>
+        <input type="date" id="hist-to" aria-label="Al">
+      </div>
+      <button class="btn btn-ghost" id="btn-hist-reset-filter">Reset filtro</button>
+    </div>
+    <div id="history-list"></div>
+  </div>
 </section>
 
 <div class="app-version" id="app-version"></div>
@@ -478,7 +503,7 @@ table.shots td.split{color:var(--accent);}
 (function(){
 "use strict";
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 document.getElementById("app-version").textContent = "v"+APP_VERSION;
 
 /* ===================== CONSTANTS ===================== */
@@ -1078,14 +1103,12 @@ function endRound(){
   releaseWakeLock();
   showResults();
 }
-function showResults(){
-  const total = shots.length? shots[shots.length-1] : 0;
-  document.getElementById("results-title").textContent = currentMode==="memory" ? "Risultato — Memory" : "Risultato — Reaction";
+function fillResultsUI(total, sequence, shots){
   document.getElementById("result-total").textContent = total.toFixed(2)+"s";
 
   const recap = document.getElementById("seq-recap");
   recap.innerHTML = "";
-  sessionSeq.forEach((t,i)=>{
+  sequence.forEach((t,i)=>{
     const el = document.createElement("div");
     el.className = "seq-chip";
     el.innerHTML = `<span class="idx">${i+1}</span>${chipFigureHTML(t)}`;
@@ -1100,6 +1123,32 @@ function showResults(){
     tr.innerHTML = `<td>#${i+1}</td><td class="time">${s.toFixed(2)}s</td><td class="split">+${split.toFixed(2)}s</td>`;
     tbody.appendChild(tr);
   });
+}
+function setResultsContext(ctx){
+  const closeBtn = document.getElementById("btn-results-close");
+  const homeBtn = document.getElementById("btn-results-home");
+  const againBtn = document.getElementById("btn-again");
+  const delBtn = document.getElementById("btn-delete-from-detail");
+  if(ctx==="history"){
+    closeBtn.setAttribute("data-nav","history");
+    homeBtn.setAttribute("data-nav","history");
+    homeBtn.textContent = "Torna allo storico";
+    againBtn.style.display = "none";
+    delBtn.style.display = "block";
+  } else {
+    closeBtn.setAttribute("data-nav","home");
+    homeBtn.setAttribute("data-nav","home");
+    homeBtn.textContent = "Home";
+    againBtn.style.display = "block";
+    delBtn.style.display = "none";
+  }
+}
+function showResults(){
+  const total = shots.length? shots[shots.length-1] : 0;
+  document.getElementById("results-eyebrow").textContent = "Round completato";
+  document.getElementById("results-title").textContent = currentMode==="memory" ? "Risultato — Memory" : "Risultato — Reaction";
+  fillResultsUI(total, sessionSeq, shots);
+  setResultsContext("live");
 
   saveHistoryEntry({
     id: (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+"-"+Math.random().toString(36).slice(2))),
@@ -1114,16 +1163,53 @@ function showResults(){
 }
 document.getElementById("btn-again").addEventListener("click", ()=>{ showScreen("session"); startRound(); });
 
+let historyDetailId = null;
+function openHistoryDetail(entry){
+  historyDetailId = entry.id;
+  document.getElementById("results-eyebrow").textContent = fmtDate(entry.date);
+  document.getElementById("results-title").textContent = entry.mode==="memory" ? "Sessione — Memory" : "Sessione — Reaction";
+  fillResultsUI(entry.total, entry.sequence, entry.shots);
+  setResultsContext("history");
+  showScreen("results");
+}
+document.getElementById("btn-delete-from-detail").addEventListener("click", ()=>{
+  if(!historyDetailId) return;
+  if(confirm("Eliminare questa sessione dallo storico?")){
+    deleteHistoryEntry(historyDetailId);
+    historyDetailId = null;
+    showScreen("history");
+  }
+});
+
 /* ===================== HISTORY UI ===================== */
 function fmtDate(iso){
   const d = new Date(iso);
-  return d.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"}) + " " + d.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
+  return d.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit",year:"numeric"}) + " " + d.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
+}
+function getFilteredHistory(){
+  let h = loadHistory();
+  const from = document.getElementById("hist-from").value;
+  const to = document.getElementById("hist-to").value;
+  if(from){
+    const fromTs = new Date(from+"T00:00:00").getTime();
+    h = h.filter(e=> new Date(e.date).getTime() >= fromTs);
+  }
+  if(to){
+    const toTs = new Date(to+"T23:59:59").getTime();
+    h = h.filter(e=> new Date(e.date).getTime() <= toTs);
+  }
+  return h;
 }
 function renderHistory(){
-  const h = loadHistory();
-  const el = document.getElementById("history-content");
-  if(h.length===0){
+  const all = loadHistory();
+  const h = getFilteredHistory();
+  const el = document.getElementById("history-list");
+  if(all.length===0){
     el.innerHTML = `<div class="empty-state"><div class="ic">◎</div><p>Nessuna sessione registrata. Completa un round per vederlo qui.</p></div>`;
+    return;
+  }
+  if(h.length===0){
+    el.innerHTML = `<div class="empty-state"><div class="ic">◎</div><p>Nessuna sessione nell'intervallo di date selezionato.</p></div>`;
     return;
   }
   el.innerHTML = "";
@@ -1136,7 +1222,9 @@ function renderHistory(){
       <div class="htotal">${entry.total.toFixed(2)}s</div>
       <div class="hsub">${entry.shots.length} colpi · ${entry.sequence.length} target</div>
     `;
-    div.querySelector(".hist-del").addEventListener("click", ()=>{
+    div.addEventListener("click", ()=> openHistoryDetail(entry));
+    div.querySelector(".hist-del").addEventListener("click", (e)=>{
+      e.stopPropagation();
       deleteHistoryEntry(entry.id);
       renderHistory();
     });
@@ -1146,7 +1234,8 @@ function renderHistory(){
   clearBtn.className = "btn btn-danger";
   clearBtn.style.marginTop = "10px";
   clearBtn.textContent = "Cancella storico";
-  clearBtn.addEventListener("click", ()=>{
+  clearBtn.addEventListener("click", (e)=>{
+    e.stopPropagation();
     if(confirm("Cancellare tutto lo storico sessioni?")){
       localStorage.removeItem("ddct_history");
       renderHistory();
@@ -1154,6 +1243,13 @@ function renderHistory(){
   });
   el.appendChild(clearBtn);
 }
+document.getElementById("hist-from").addEventListener("change", renderHistory);
+document.getElementById("hist-to").addEventListener("change", renderHistory);
+document.getElementById("btn-hist-reset-filter").addEventListener("click", ()=>{
+  document.getElementById("hist-from").value = "";
+  document.getElementById("hist-to").value = "";
+  renderHistory();
+});
 
 /* ===================== INIT ===================== */
 renderSettingsUI();
