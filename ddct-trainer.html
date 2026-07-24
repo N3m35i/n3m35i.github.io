@@ -45,18 +45,18 @@
   --font-mono:'JetBrains Mono', monospace;
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-html,body{height:100%;}
+html,body{height:100%; overflow:hidden;}
 body{
   margin:0; background:var(--bg); color:var(--text);
   font-family:var(--font-body);
   overscroll-behavior:none; user-select:none;
   -webkit-user-select:none;
-  min-height:100vh; min-height:100dvh;
+  position:fixed; inset:0; width:100%;
   padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
 }
 button{font-family:inherit; -webkit-appearance:none; appearance:none; border:none; cursor:pointer;}
 input,select{font-family:inherit;}
-.screen{display:none; min-height:100vh; min-height:100dvh; flex-direction:column;}
+.screen{display:none; height:100%; flex-direction:column; overflow:hidden;}
 .screen.active{display:flex;}
 
 /* ---------- shared chrome ---------- */
@@ -72,7 +72,7 @@ input,select{font-family:inherit;}
   font-size:18px; border:1px solid var(--border);
 }
 .icon-btn:active{background:var(--panel-2);}
-.content{flex:1; padding:20px; overflow-y:auto;}
+.content{flex:1; min-height:0; padding:20px; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;}
 
 /* ---------- home ---------- */
 #screen-home .content{display:flex; flex-direction:column; gap:14px; padding-top:6px;}
@@ -520,7 +520,7 @@ table.shots td.split{color:var(--accent);}
 (function(){
 "use strict";
 
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.9.0";
 document.getElementById("app-version").textContent = "v"+APP_VERSION;
 
 /* ===================== CONSTANTS ===================== */
