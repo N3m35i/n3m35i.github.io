@@ -525,7 +525,7 @@ table.shots td.split{color:var(--accent);}
 (function(){
 "use strict";
 
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "1.10.1";
 document.getElementById("app-version").textContent = "v"+APP_VERSION;
 
 /* ===================== CONSTANTS ===================== */
@@ -783,7 +783,7 @@ function sensitivityToThreshold(sens){
 }
 function updateMicThresholdMarker(){
   const th = sensitivityToThreshold(settings.sensitivity);
-  const pct = (1-th)*100;
+  const pct = th*100; // il fill del meter è già peak*100%, quindi la soglia va allo stesso punto, non invertita
   document.getElementById("mic-meter-threshold").style.left = pct+"%";
 }
 async function ensureAudioCtx(){
