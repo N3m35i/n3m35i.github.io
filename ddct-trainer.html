@@ -345,7 +345,7 @@ table.shots td.split{color:var(--accent);}
       <h3>Rilevamento sparo</h3>
       <div class="field">
         <div class="field-label"><span>Sensibilità</span><span class="val" id="v-sens">70</span></div>
-        <div class="field-desc">Più alta = rileva colpi più deboli/lontani, ma più rischio di falsi positivi (rumore ambiente).</div>
+        <div class="field-desc">Più alta = rileva colpi più deboli/lontani, ma più rischio di falsi positivi (rumore ambiente). Al minimo serve un picco quasi a piena scala: utile per ignorare rumori meccanici forti come scarrellamento o cambio caricatore.</div>
         <input type="range" id="s-sens" min="1" max="100" value="70">
       </div>
       <div class="field">
@@ -520,7 +520,7 @@ table.shots td.split{color:var(--accent);}
 (function(){
 "use strict";
 
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.9.1";
 document.getElementById("app-version").textContent = "v"+APP_VERSION;
 
 /* ===================== CONSTANTS ===================== */
@@ -763,8 +763,10 @@ document.getElementById("btn-reset-settings").addEventListener("click", ()=>{
 
 /* ===================== MIC / AUDIO ===================== */
 function sensitivityToThreshold(sens){
-  // sens 1..100 -> threshold 0.92 .. 0.04 (amplitude 0..1)
-  return 0.92 - (sens/100)*0.88;
+  // sens 1..100 -> threshold 0.975 .. 0.02 (amplitude 0..1)
+  // il tetto è stato alzato a 0.975 (quasi clipping totale) cosi che, al minimo, l'app
+  // ignori rumori meccanici forti (scarrellamento, cambio caricatore) e scatti solo su un vero sparo
+  return 0.975 - (sens/100)*0.955;
 }
 function updateMicThresholdMarker(){
   const th = sensitivityToThreshold(settings.sensitivity);
