@@ -645,7 +645,7 @@ const c0=cam;cam=function(){c0();rhUpd()}})();
 const VMC={};
 function vm(c,o){const k=c+(o||'');return VMC[k]||(VMC[k]=new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.45,metalness:.3},o?{transparent:true,opacity:.88,roughness:.15,metalness:.1}:{})))}
 function vehicle3(t,b,lx,lz,X,Z){const k=t.vk,dm=vdim(t),L=dm[0]*S,W=dm[1]*S,Hh=g(t,'oh'),grp=new THREE.Group();grp.position.set(X,b,Z);grp.rotation.y=-vang(t)*Math.PI/180;
- const tire=vm(0x16181a),dark=vm(0x23272b),glass=vm(0x16212c,1),chr=vm(0xb9c0c7),hl=new THREE.MeshBasicMaterial({color:0xfff2c4}),tl=new THREE.MeshBasicMaterial({color:0xc82020});
+ const tire=vm(0x16181a),dark=vm(0x23272b),glass=vm(0x16212c,1),chr=vm(0xb9c0c7),hl=new THREE.MeshBasicMaterial({color:t.lt?0xfff2c4:0x8f979c}),tl=new THREE.MeshBasicMaterial({color:t.lt?0xff2a2a:0x5a1818});
  const bx=(w,h,d,x,y,z,m)=>{const q=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);q.position.set(x,y+h/2,z);q.castShadow=true;q.receiveShadow=true;q.userData.it=t;grp.add(q);return q};
  const wh=(r,w,x,z)=>{const q=new THREE.Mesh(new THREE.CylinderGeometry(r,r,w,20),tire);q.rotation.x=Math.PI/2;q.position.set(x,r,z);q.castShadow=true;q.userData.it=t;grp.add(q);const c=new THREE.Mesh(new THREE.CylinderGeometry(r*.5,r*.5,w+.01,14),chr);c.rotation.x=Math.PI/2;c.position.set(x,r,z+Math.sign(z||1)*.004);c.userData.it=t;grp.add(c)};
  const lights=(y,zf,hh)=>{for(const s of[-1,1]){bx(.04,hh,.22,L/2-.01,y,s*W*zf,hl);bx(.04,hh,.18,-L/2+.01,y,s*W*zf,tl)}};
@@ -801,6 +801,9 @@ function litPoly(l,fl){const X=l.x1*S,Z=l.y1*S,R0=lg(l,'lr'),bl=sightBlk(fl,1.2)
 function litAt(h){const fl=flOf(h);if(fl<0)return true;const X=h.x1*S,Z=h.y1*S,bl=sightBlk(fl,1.2);
  for(const o of st.floors[fl]){const ox=o.x1*S,oz=o.y1*S,dx=X-ox,dz=Z-oz,d=Math.hypot(dx,dz);
   if(o.t=='l'){if(lg(o,'on')&&d<=lg(o,'lr')&&(d<.05||rayD(ox,oz,dx/d,dz/d,d,bl)>=d-.05))return true}
+  else if(o.t=='o'&&o.vk&&o.lt){const[c0,s0,L0,W0,cx0,cz0]=vgeo(o),fx=X-cx0,fz=Z-cz0,u=fx*c0+fz*s0,w=-fx*s0+fz*c0;
+   if(u>L0/2&&u<18&&Math.abs(Math.atan2(w,u-L0/2))<.5&&rayD(cx0+c0*L0/2,cz0+s0*L0/2,(X-cx0-c0*L0/2)/Math.hypot(X-cx0-c0*L0/2,Z-cz0-s0*L0/2),(Z-cz0-s0*L0/2)/Math.hypot(X-cx0-c0*L0/2,Z-cz0-s0*L0/2),Math.hypot(X-cx0-c0*L0/2,Z-cz0-s0*L0/2),bl)>=Math.hypot(X-cx0-c0*L0/2,Z-cz0-s0*L0/2)-.05)return true;
+   if(u<-L0/2&&u>-L0/2-3&&Math.abs(w)<3)return true}
   else if(o.t=='p'&&!isDown(o)){if(g(o,'sd')=='b'&&d<1.2)return true;if(o===h&&torchOn(o))return true;
    if(torchOn(o)&&d<22){const da=Math.abs(((Math.atan2(dz,dx)-g(o,'a')*Math.PI/180+3*Math.PI)%(2*Math.PI))-Math.PI);if(da<=Math.PI/8.5&&rayD(ox,oz,dx/d,dz/d,d,bl)>=d-.05)return true}}}
  return false}
@@ -920,6 +923,22 @@ function beamUpd(t,o){const b=o.b;if(!b.userData.bg){b.geometry.dispose();const 
  b.geometry.attributes.position.needsUpdate=true;b.geometry.computeBoundingSphere()}
 {const _tu=torchUpd;torchUpd=function(t){_tu(t);const o=torches.get(t);if(o)beamUpd(t,o)}}
 {const _nu=nvUpd;nvUpd=function(t){_nu(t);const o=nvb.get(t);if(o)beamUpd(t,o)}}
+render();
+
+/* fari e fanalini dei veicoli */
+function vgeo(t){const d=vdim(t),a=vang(t)*Math.PI/180;return[Math.cos(a),Math.sin(a),d[0]*S,d[1]*S,(t.x1+t.x2)/2*S,(t.y1+t.y2)/2*S]}
+const vehL=[],VHY={moto:.8,berlina:.65,city:.7,furgone:.75,camion:1.0};
+function vehLights(){for(const l of vehL)Sc.remove(l);vehL.length=0;if(!R||!(st.vis|0))return;let n=0;
+ st.floors.forEach((f,i)=>{if(i>st.cur)return;for(const t of f){if(t.t!='o'||!t.vk||!t.lt||n>=3)continue;const[c,s2,L,W,cx,cz]=vgeo(t),y=i*H+(VHY[t.vk]||.7),ps=t.vk=='moto'?[0]:[-.34*W,.34*W];
+  for(const o of ps){const px=cx+c*(L/2)-s2*o,pz=cz+s2*(L/2)+c*o,sp=new THREE.SpotLight(0xfff0d0,2.88,34,Math.PI/6.5,.5,1.3);sp.position.set(px,y,pz);if(n<1&&innerWidth>=760){sp.castShadow=true;sp.shadow.mapSize.set(1024,1024);sp.shadow.bias=-.001;sp.shadow.camera.near=.3;sp.shadow.camera.far=34}sp.target.position.set(px+c*20,y-.5,pz+s2*20);sp.target.updateMatrixWorld();Sc.add(sp);Sc.add(sp.target);vehL.push(sp,sp.target)}
+  const tp=new THREE.PointLight(0xff2a1a,.9,4,1.6);tp.position.set(cx-c*(L/2+.1),y,cz-s2*(L/2+.1));Sc.add(tp);vehL.push(tp);n++}})}
+{const _av4=applyVis;applyVis=function(){_av4();vehLights()}}
+{const _b6=build3;build3=function(fit){_b6(fit);st.floors.forEach((f,i)=>{if(i>st.cur)return;for(const t of f){if(t.t!='o'||!t.vk||!t.lt)continue;const[c,s2,L,W,cx,cz]=vgeo(t),y=i*H+(VHY[t.vk]||.7),ps=t.vk=='moto'?[0]:[-.34*W,.34*W];
+  const gl=(px,pz,col)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.2,10,8),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.35,depthWrite:false,blending:THREE.AdditiveBlending}));m.position.set(px,y,pz);m.raycast=()=>{};G.add(m)};
+  for(const o of ps){gl(cx+c*(L/2+.05)-s2*o,cz+s2*(L/2+.05)+c*o,0xfff0c8);gl(cx-c*(L/2+.05)-s2*o,cz-s2*(L/2+.05)+c*o,0xff3020)}}});vehLights()}}
+const ICV='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M4 8c0-2 2-3 4-3 4 0 6 3 6 7s-2 7-6 7c-2 0-4-1-4-3z"/><path d="M17 8h4M17 12h4M17 16h4"/></svg>';
+{const _pp4=pp;pp=function(){_pp4();if(sel&&sel.t=='o'&&sel.vk&&!$('pp').hidden){const on=!!sel.lt;$('pp').firstElementChild.insertAdjacentHTML('afterend',`<button data-vl="1" title="Fari e fanalini: ${on?'accesi':'spenti'}" style="min-width:42px;${on?'background:#c98a12;color:#fff;border-color:#c98a12':''}">${ICV}</button>`)}}}
+$('pp').addEventListener('click',e=>{const b=e.target.closest('button[data-vl]');if(!b||!sel||!sel.vk)return;e.stopImmediatePropagation();push();sel.lt=sel.lt?0:1;save();applyVis();upd();render()},true);
 render();
 </script>
 </body></html>
