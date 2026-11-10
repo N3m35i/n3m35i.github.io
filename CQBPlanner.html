@@ -911,6 +911,16 @@ render();
 /* collisione unità con ostacoli e pareti */
 {const _xm=xferMove;xferMove=function(it,nx,ny){if(it.t=='p'&&flOf(it)>=0){const fl=flOf(it);let x=it.x1*S,z=it.y1*S;const X1=nx*S,Z1=ny*S,N=Math.max(1,Math.ceil(Math.hypot(X1-x,Z1-z)/.1));
   for(let i=0;i<N;i++){const dx=(X1-x)/(N-i),dz=(Z1-z)/(N-i),q=col(x+dx,z+dz,fl,.25);x=q[0];z=q[1]}nx=+(x/S).toFixed(4);ny=+(z/S).toFixed(4)}_xm(it,nx,ny)}}
+
+/* coni luminosi limitati dalle pareti */
+const BN=12,BIDX=(()=>{const x=[],V=(i,l)=>1+i*3+l+1;for(let i=0;i<BN;i++){x.push(0,V(i,1),V(i+1,1),0,V(i,-1),V(i+1,-1));for(const l of[-1,0]){x.push(V(i,l),V(i+1,l),V(i+1,l+1),V(i,l),V(i+1,l+1),V(i,l+1))}}x.push(0,V(0,-1),V(0,1),0,V(BN,-1),V(BN,1));return x})();
+function beamUpd(t,o){const b=o.b;if(!b.userData.bg){b.geometry.dispose();const g2=new THREE.BufferGeometry();g2.setAttribute('position',new THREE.BufferAttribute(new Float32Array((1+(BN+1)*3)*3),3));g2.setIndex(BIDX);b.geometry=g2;b.userData.bg=1;b.scale.set(1,1,1);b.position.set(0,0,0);b.quaternion.identity()}
+ const fi=Math.max(0,flOf(t)),po=g(t,'po'),y=fi*H+stH(t.x1,t.y1,fi)+[1.45,1.0,.3][po],X=t.x1*S,Z=t.y1*S,A=g(t,'a')*Math.PI/180,f2=Math.PI/8.5,tn=Math.tan(f2),bl=sightBlk(fi,[1.65,1.15,.4][po]),P=b.geometry.attributes.position.array;
+ P[0]=X;P[1]=y;P[2]=Z;for(let i=0;i<=BN;i++){const q=A-f2+2*f2*i/BN,c=Math.cos(q),n=Math.sin(q),d=rayD(X,Z,c,n,9,bl)*.98;for(let l=-1;l<=1;l++){const k=(1+i*3+l+1)*3;P[k]=X+c*d;P[k+1]=y+l*d*tn;P[k+2]=Z+n*d}}
+ b.geometry.attributes.position.needsUpdate=true;b.geometry.computeBoundingSphere()}
+{const _tu=torchUpd;torchUpd=function(t){_tu(t);const o=torches.get(t);if(o)beamUpd(t,o)}}
+{const _nu=nvUpd;nvUpd=function(t){_nu(t);const o=nvb.get(t);if(o)beamUpd(t,o)}}
+render();
 </script>
 </body></html>
 
