@@ -184,7 +184,7 @@ stage.addEventListener('pointerdown',e=>{stage.setPointerCapture(e.pointerId);co
  if(tool=='s'){if(sel&&sel.vk){const c=w2s((sel.x1+sel.x2)/2,(sel.y1+sel.y2)/2),a=vang(sel)*Math.PI/180,r=(vdim(sel)[0]/2+1.2)*v.z;if(Math.hypot(p[0]-(c[0]+Math.cos(a)*r),p[1]-(c[1]+Math.sin(a)*r))<20){drag={vrot:1,it:sel};return}}if(sel&&sel.t=='p'){const r=g(sel,'a')*Math.PI/180,hp=w2s(sel.x1+Math.cos(r)*HR,sel.y1+Math.sin(r)*HR);if(Math.hypot(p[0]-hp[0],p[1]-hp[1])<20){drag={arot:1,it:sel};return}}const h=pick(w);if(h&&h.t=='d'){push();toggleDoor(h);save()}sel=h;if(!sel)drag={pan:1,last:p};else if(h.t=='p')drag={mv:1,it:h};else if(h.vk)drag={mvv:1,it:h,w0:w,o:[h.x1,h.y1,h.x2,h.y2]};upd()}else if(tool=='x')fire4(w);else if(tool=='b'||tool=='r'||tool=='c')drag={act:1,c:cc(w),p:w};else{const a=snap(w);drag={a,b:a}}render()});
 var INV=true;
 stage.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;const p=P(e);ptrs.set(e.pointerId,p);const iv=1;
- if(ptrs.size>=2){const g=gest();if(g0){if(mode==2){v.ox+=iv*(g.cx-g0.cx);v.oy+=iv*(g.cy-g0.cy);zoomAt(g.cx,g.cy,g.d/g0.d)}else{dist=clamp(dist*g0.d/g.d,3,120);{const j=cm=='orbit'?iv:1;pan3(-j*(g.cx-g0.cx),-j*(g.cy-g0.cy))}}}g0=g;render();return}
+ if(ptrs.size>=2){const g=gest();if(g0){if(mode==2){v.ox+=iv*(g.cx-g0.cx);v.oy+=iv*(g.cy-g0.cy);zoomAt(g.cx,g.cy,g.d/g0.d)}else{dist=clamp(dist*g0.d/g.d,3,120);pan3(g.cx-g0.cx,g.cy-g0.cy)}}g0=g;render();return}
  if(!drag)return;
  if(drag.pan){v.ox+=iv*(p[0]-drag.last[0]);v.oy+=iv*(p[1]-drag.last[1]);drag.last=p}
  else if(drag.vrot){const it=drag.it,w=s2w(p[0],p[1]);let na=(Math.round(Math.atan2(w[1]-(it.y1+it.y2)/2,w[0]-(it.x1+it.x2)/2)*180/Math.PI/5)*5+360)%360;if(na!=vang(it)){if(!drag.moved){push();drag.moved=1}const d=vdim(it);vfit(it,d[0],d[1],na);pp()}}
