@@ -915,7 +915,7 @@ function apCalc(){if(apRun)return;apRun=true;const now=performance.now(),o0=RAWA
    if(t===sel&&(q.vl||[]).length!=vl.length)ppch=true;
    q.r=r;q.a=a;q.tg=tg;q.vl=vl}}}
  finally{RAWA=o0;apRun=false}
- if(ch)try{wpUpd();faUpd()}catch(e){}
+ if(ch)try{wpUpd();faUpd();usUpd()}catch(e){}
  if(ch&&mode==3&&R){if(sig()!=builtSig)build3();else for(const t of [...acts3.keys()])syncAct(t,1)}
  if(ppch)pp();
  if(busy&&!apTm)apTm=setTimeout(()=>{apTm=0;apCalc();render()},480)}
@@ -1138,6 +1138,11 @@ function cycUnit(dir){if(!sel||sel.t!='p')return;const sd=g(sel,'sd'),all=st.flo
 {const _pp6=pp;pp=function(){_pp6();if(sel&&sel.t=='p'&&!$('pp').hidden&&!$('pp').querySelector('[data-un]'))$('pp').firstElementChild.insertAdjacentHTML('afterend','<button data-un="-1" title="Unità precedente (Maiusc+Tab)" style="min-width:38px">‹</button><button data-un="1" title="Unità successiva (Tab)" style="min-width:38px">›</button>')}}
 $('pp').addEventListener('click',e=>{const b=e.target.closest('button[data-un]');if(!b)return;e.stopImmediatePropagation();cycUnit(+b.dataset.un)},true);
 addEventListener('keydown',e=>{if(e.key!='Tab'||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||!sel||sel.t!='p'||document.querySelector('dialog[open]'))return;e.preventDefault();cycUnit(e.shiftKey?-1:1)});
+{const d=document.createElement('div');d.id='usw';d.hidden=true;d.innerHTML='<button data-u="-1" title="Unità precedente (Maiusc+Tab)">‹</button><b id="usn"></b><button data-u="1" title="Unità successiva (Tab)">›</button><span id="ust" hidden style="display:flex;gap:4px;align-items:center"><button data-g="-1" title="Bersaglio precedente ([)">◀</button><button data-g="0" id="usl" title="Puntamento automatico">🎯</button><button data-g="1" title="Bersaglio successivo (])">▶</button></span>';$('stage').appendChild(d);
+ const c=document.createElement('style');c.textContent='#usw{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:6px;background:var(--pn);border:1px solid var(--ln);border-radius:22px;padding:3px;opacity:.92}#usw[hidden]{display:none}#usw button{min-width:40px;min-height:40px;border-radius:20px;font-size:20px;padding:0}#usw b{min-width:34px;text-align:center}';document.head.appendChild(c);
+ d.addEventListener('pointerdown',e=>e.stopPropagation());d.addEventListener('click',e=>{const b=e.target.closest('button[data-u]');if(b){cycUnit(+b.dataset.u);usUpd();return}const g2=e.target.closest('button[data-g]');if(g2){const k=+g2.dataset.g;if(k)tgCycle(k);else tgOff();usUpd()}})}
+function usUpd(){const d=$('usw');if(!d)return;const on=mode==3&&cm!='orbit'&&sel&&sel.t=='p';d.hidden=!on;if(on){$('usn').textContent=sel.n||'Unità';const q=AP.get(sel),n=q&&q.vl?q.vl.length:0,t=$('ust');t.hidden=!n;t.style.display=n?'flex':'none';t.querySelectorAll('[data-g="-1"],[data-g="1"]').forEach(b=>b.style.display=n>1?'':'none');const l=$('usl');l.style.background=q&&!q.off?'#d6453d':'';l.style.color=q&&!q.off?'#fff':''}}
+{const _u7=upd;upd=function(){_u7();usUpd()}}
 TUT.forEach(x=>{if(x[0]=='Unità')x[1]+=' Con ‹ › (o Tab) passi all’unità successiva della stessa squadra.'});
 render();
 </script>
