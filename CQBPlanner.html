@@ -369,7 +369,22 @@ function fogUpd(){if(!fog||!fogCtx)return;const ops=cur().filter(o=>o.t=='p'&&g(
  const c=fogCtx,n=512,sc=n/fbb.s,X=x=>(x-(fbb.x-fbb.s/2))*sc,Z=z=>(z-(fbb.z-fbb.s/2))*sc;c.globalCompositeOperation='source-over';c.clearRect(0,0,n,n);c.fillStyle='rgba(6,10,14,.5)';c.fillRect(0,0,n,n);c.globalCompositeOperation='destination-out';c.fillStyle='#000';
  for(const o of ops){c.beginPath();c.moveTo(X(o.x1*S),Z(o.y1*S));for(const q of los(o,st.cur))c.lineTo(X(q[0]),Z(q[1]));c.closePath();c.fill();c.beginPath();c.arc(X(o.x1*S),Z(o.y1*S),.6*sc,0,7);c.fill()}
  fogTx.needsUpdate=true}
-function addShot(sh,tg2){ensureK(sh);if(live||!tlOn){liveShot(sh,tg2);return}const T=+tm.toFixed(2);if(isDown(sh)){$('hint').textContent='Questa unità è abbattuta e non può sparare.';return}
+function shotResolve(sh,tg2){try{const fl=flOf(sh);if(fl<0)return tg2;const b=tg2.to?byId(tg2.to):null;if(tg2.to&&(!b||flOf(b)!=fl))return tg2;
+ const X=sh.x1*S,Z=sh.y1*S,ex=(b?b.x1:tg2.x)*S,ez=(b?b.y1:tg2.y)*S,T=Math.hypot(ex-X,ez-Z);if(T<.05)return tg2;
+ const dx=(ex-X)/T,dz=(ez-Z)/T,ps=g(sh,'po'),h0=[1.4,.95,.25][ps],h1=b?[1.3,.9,.25][g(b,'po')]:(tg2.z??h0),hz=t=>h0+(h1-h0)*t/T;
+ const slab=q=>{let t0=0,t1=T;if(Math.abs(dx)<1e-9){if(X<q[0]||X>q[2])return null}else{const u=(q[0]-X)/dx,w=(q[2]-X)/dx;t0=Math.max(t0,Math.min(u,w));t1=Math.min(t1,Math.max(u,w))}
+  if(Math.abs(dz)<1e-9){if(Z<q[1]||Z>q[3])return null}else{const u=(q[1]-Z)/dz,w=(q[3]-Z)/dz;t0=Math.max(t0,Math.min(u,w));t1=Math.min(t1,Math.max(u,w))}return t1>t0+1e-6?[t0,t1]:null};
+ const ev=[],ws=[];
+ for(const o of st.floors[fl]){
+  if(o.t=='w'){const q=slab([o.x1*S-TH/2,o.y1*S-TH/2,o.x2*S+TH/2,o.y2*S+TH/2]);if(q)ws.push(q)}
+  else if(o.t=='o'){const q=slab([o.x1*S,o.y1*S,o.x2*S,o.y2*S]);if(q&&hz(q[0])<g(o,'oh'))ev.push({t:q[0],k:'o'})}
+  else if(o.t=='p'&&o!==sh&&o!==b&&!isDown(o)&&g(o,'po')<=ps){const px=o.x1*S-X,pz=o.y1*S-Z,pr=px*dx+pz*dz,lat=Math.abs(px*dz-pz*dx);if(pr>.1&&pr<T-.05&&lat<.25)ev.push({t:pr,k:'b',o})}}
+ ws.sort((p,q)=>p[0]-q[0]);const mg=[];for(const q of ws){const l=mg[mg.length-1];if(l&&q[0]<=l[1]+.03)l[1]=Math.max(l[1],q[1]);else mg.push([q[0],q[1]])}
+ for(const q of mg)ev.push({t:q[0],k:'w'});ev.sort((p,q)=>p.t-q.t);
+ let wc=0;for(const e of ev){if(e.k=='b')return {to:e.o.id};if(e.k=='w'){wc++;if(wc<2)continue}
+  const t=Math.max(0,e.t);$('hint').textContent='Il colpo si ferma contro '+(e.k=='w'?'la seconda parete.':'l\u2019ostacolo.');return {x:+((X+dx*t)/S).toFixed(2),y:+((Z+dz*t)/S).toFixed(2),z:+hz(t).toFixed(2)}}
+ return tg2}catch(err){return tg2}}
+function addShot(sh,tg2){tg2=shotResolve(sh,tg2);ensureK(sh);if(live||!tlOn){liveShot(sh,tg2);return}const T=+tm.toFixed(2);if(isDown(sh)){$('hint').textContent='Questa unità è abbattuta e non può sparare.';return}
  const old=EV().filter(e=>e.f===sh.id&&Math.abs(e.t-T)<.05);
  const e=Object.assign({t:T,f:sh.id},tg2);if(e.to)e.hit=true;else e.sup=true;push();old.forEach(o=>EV().splice(EV().indexOf(o),1));EV().push(e);save();upd();render()}
 function fire4(w){const h=pick(w);if(!(sel&&sel.t=='p')){if(h&&h.t=='p'){sel=h;upd();render()}return}
